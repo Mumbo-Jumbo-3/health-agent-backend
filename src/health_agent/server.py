@@ -1,0 +1,61 @@
+import uuid
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from langchain_core.messages import HumanMessage
+from pydantic import BaseModel, Field
+
+from health_agent.config import get_settings
+from health_agent.graph import build_graph
+from health_agent.rag.ingest import ingest_resources
+from health_agent.rag.retriever import mark_indexed, needs_reindex
+
+sessions: dict[str, list] = {}
+compiled_graph = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global compiled_graph
+    settings = get_settings()
+
+    if needs_reindex(settings):
+        print("Indexing resources...")
+        result = ingest_resources(settings)
+        if result is not None:
+            mark_indexed(settings)
+
+    compiled_graph = build_graph(settings)
+    yield
+
+
+app = FastAPI(title="Health Agent API", lifespan=lifespan)
+
+
+class ChatRequest(BaseModel):
+    message: str
+    session_id: str | None = None
+
+
+class ChatResponse(BaseModel):
+    response: str
+    session_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    session_id = request.session_id or uuid.uuid4().hex
+    messages = sessions.get(session_id, [])
+
+    messages.append(HumanMessage(content=request.message))
+    result = compiled_graph.invoke({"messages": messages})
+    messages = result["messages"]
+    sessions[session_id] = messages
+
+    ai_message = messages[-1]
+    return ChatResponse(response=ai_message.content, session_id=session_id)
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
