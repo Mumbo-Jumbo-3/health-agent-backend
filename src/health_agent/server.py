@@ -82,7 +82,7 @@ async def chat_stream(request: ChatRequest):
                 token = event["data"]["chunk"].content
                 if token:
                     full_response += token
-                    yield {"event": "token", "data": token}
+                    yield {"event": "token", "data": token.replace("\n", "\\n")}
 
         messages.append(AIMessage(content=full_response))
         sessions[session_id] = messages
