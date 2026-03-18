@@ -40,7 +40,7 @@ def ingest_resources(settings: Settings):
     # Clear existing collection for idempotent re-indexing
     try:
         client.delete_collection("health_docs")
-    except ValueError:
+    except Exception:
         pass
 
     vectorstore = Chroma(
