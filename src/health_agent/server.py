@@ -20,7 +20,6 @@ compiled_graph = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global compiled_graph
-    settings = get_settings()
 
     if needs_reindex(settings):
         print("Indexing resources...")
@@ -32,11 +31,12 @@ async def lifespan(app: FastAPI):
     yield
 
 
+settings = get_settings()
 app = FastAPI(title="Health Agent API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
