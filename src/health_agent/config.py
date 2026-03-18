@@ -11,7 +11,7 @@ class LLMProvider(StrEnum):
 
 
 class Settings(BaseSettings):
-    model_config = {"env_prefix": "HEALTH_"}
+    model_config = {}
 
     llm_provider: LLMProvider = LLMProvider.XAI
 
