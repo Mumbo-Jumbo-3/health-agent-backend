@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["http://localhost:3000"]
 
-    llm_provider: LLMProvider = LLMProvider.OPENAI
+    llm_provider: LLMProvider = LLMProvider.XAI
 
     openai_api_key: str = ""
     anthropic_api_key: str = ""
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     openai_model: str = "gpt-4o-mini"
     anthropic_model: str = "claude-sonnet-4-20250514"
-    xai_model: str = "grok-3-mini-fast"
+    xai_model: str = "grok-4-1-fast-reasoning"
 
     embedding_model: str = "text-embedding-3-small"
 
