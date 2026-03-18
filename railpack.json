@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.railpack.com",
   "deploy": {
-    "startCommand": "langgraph dev --host 0.0.0.0 --port ${PORT:-8000} --no-browser"
+    "startCommand": "health-agent ingest && langgraph dev --host 0.0.0.0 --port ${PORT:-8000} --no-browser"
   }
 }

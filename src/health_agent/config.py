@@ -13,8 +13,6 @@ class LLMProvider(StrEnum):
 class Settings(BaseSettings):
     model_config = {"env_prefix": "HEALTH_"}
 
-    cors_origins: list[str] = ["http://localhost:3000"]
-
     llm_provider: LLMProvider = LLMProvider.XAI
 
     openai_api_key: str = ""
