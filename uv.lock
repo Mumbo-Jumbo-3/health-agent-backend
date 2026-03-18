@@ -913,6 +913,7 @@ dependencies = [
     { name = "langchain-xai" },
     { name = "langgraph" },
     { name = "langgraph-cli", extra = ["inmem"] },
+    { name = "langsmith" },
     { name = "pydantic-settings" },
     { name = "typer" },
 ]
@@ -934,6 +935,7 @@ requires-dist = [
     { name = "langchain-xai", specifier = ">=0.2" },
     { name = "langgraph", specifier = ">=0.4" },
     { name = "langgraph-cli", extras = ["inmem"], specifier = ">=0.1" },
+    { name = "langsmith", specifier = ">=0.7.19" },
     { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "typer", specifier = ">=0.15" },
 ]
