@@ -17,6 +17,7 @@ dependencies = [
     "uvicorn>=0.34",
     "sse-starlette>=2.0",
     "langchain-chroma>=1.1.0",
+    "langgraph-cli[inmem]>=0.1",
 ]
 
 [project.scripts]
