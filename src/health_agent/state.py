@@ -6,3 +6,6 @@ from typing_extensions import TypedDict
 
 class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
+    initial_response: str
+    refined_query: str
+    rag_context: str

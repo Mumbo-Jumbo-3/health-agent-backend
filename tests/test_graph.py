@@ -12,5 +12,6 @@ def test_graph_has_expected_nodes():
     settings = Settings(llm_provider=LLMProvider.OPENAI, openai_api_key="test-key")
     graph = build_graph(settings)
     node_names = set(graph.get_graph().nodes.keys())
-    assert "agent" in node_names
-    assert "tools" in node_names
+    assert "grok_initial" in node_names
+    assert "rag_retrieve" in node_names
+    assert "synthesize" in node_names
