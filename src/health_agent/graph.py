@@ -47,7 +47,10 @@ Disclaimers are provided elsewhere. No need to remind users to consult healthcar
         # recognize "x_search" as a well-known tool type and would try to
         # convert it to a function schema. bind() passes it through directly
         # and _use_responses_api() will route to the Responses API.
-        search_llm = llm.bind(
+        # Tag with "nostream" so the messages-tuple stream mode skips this
+        # intermediate LLM call and only the final synthesize response is
+        # streamed to the frontend.
+        search_llm = llm.with_config({"tags": ["nostream"]}).bind(
             tools=[
                 {
                     "type": "x_search",
