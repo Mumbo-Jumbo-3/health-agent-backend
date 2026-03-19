@@ -62,7 +62,8 @@ Disclaimers are provided elsewhere. No need to remind users to consult healthcar
             '"initial_response" and "refined_query". No other text.'
         )
         raw = search_llm.invoke(
-            [SystemMessage(content=json_prompt), last_message]
+            [SystemMessage(content=json_prompt), last_message],
+            config={"tags": ["langsmith:nostream", "langsmith:do-not-render"]},
         )
 
         # raw.content may be a list of content blocks when tools are used
