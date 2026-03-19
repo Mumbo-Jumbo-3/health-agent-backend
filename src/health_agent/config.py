@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     embedding_model: str = "text-embedding-3-small"
 
-    trusted_x_accounts: list[str] = ["helios_movement", "grimhood", "aestheticprimal"]
+    trusted_x_accounts: list[str] = ["helios_movement", "grimhood", "aestheticprimal", "hubermanlab", "foundmyfitness", "outdoctrination"]
 
     resources_dir: Path = Path("resources")
     chroma_persist_dir: Path = Path(".chroma_db")
