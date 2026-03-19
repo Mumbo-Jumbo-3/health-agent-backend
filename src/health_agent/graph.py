@@ -41,13 +41,19 @@ Disclaimers are provided elsewhere. No need to remind users to consult healthcar
 
         last_message = state["messages"][-1]
 
-        # Bind xAI's native X/Twitter search tool so Grok can pull live posts
-        search_llm = llm.bind_tools([
-            {
-                "type": "x_search",
-                "allowed_x_handles": settings.trusted_x_accounts,
-            }
-        ])
+        # Bind xAI's native X/Twitter search tool so Grok can pull live posts.
+        # Use bind() instead of bind_tools() because langchain-core doesn't
+        # recognize "x_search" as a well-known tool type and would try to
+        # convert it to a function schema. bind() passes it through directly
+        # and _use_responses_api() will route to the Responses API.
+        search_llm = llm.bind(
+            tools=[
+                {
+                    "type": "x_search",
+                    "allowed_x_handles": settings.trusted_x_accounts,
+                }
+            ]
+        )
 
         json_prompt = (
             initial_system
