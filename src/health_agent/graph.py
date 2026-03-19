@@ -38,6 +38,7 @@ Disclaimers are provided elsewhere. No need to remind users to consult healthcar
 
     def grok_initial(state: AgentState):
         import json as _json
+        import re as _re
 
         last_message = state["messages"][-1]
 
@@ -69,11 +70,19 @@ Disclaimers are provided elsewhere. No need to remind users to consult healthcar
         if content.startswith("```"):
             content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
 
+        # Strip <grok:render> citation tags returned by the Responses API
+        content = _re.sub(r"<grok:render[^>]*>.*?</grok:render>", "", content, flags=_re.DOTALL)
+
         parsed = _json.loads(content)
         result = InitialAnalysis(**parsed)
 
+        # Also strip citation tags from the initial_response before passing downstream
+        clean_response = _re.sub(
+            r"<grok:render[^>]*>.*?</grok:render>", "", result.initial_response, flags=_re.DOTALL
+        )
+
         return {
-            "initial_response": result.initial_response,
+            "initial_response": clean_response,
             "refined_query": result.refined_query,
         }
 
