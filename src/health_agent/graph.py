@@ -65,8 +65,15 @@ Disclaimers are provided elsewhere. No need to remind users to consult healthcar
             [SystemMessage(content=json_prompt), last_message]
         )
 
-        # Strip markdown code fences if present
-        content = raw.content.strip()
+        # raw.content may be a list of content blocks when tools are used
+        if isinstance(raw.content, list):
+            content = "\n".join(
+                block.get("text", "") if isinstance(block, dict) else str(block)
+                for block in raw.content
+                if not (isinstance(block, dict) and block.get("type") == "tool_use")
+            ).strip()
+        else:
+            content = raw.content.strip()
         if content.startswith("```"):
             content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
 
