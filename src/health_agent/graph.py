@@ -42,16 +42,12 @@ Disclaimers are provided elsewhere. No need to remind users to consult healthcar
         last_message = state["messages"][-1]
 
         # Bind xAI's native X/Twitter search tool so Grok can pull live posts
-        search_llm = llm.bind(
-            extra_body={
-                "tools": [
-                    {
-                        "type": "x_search",
-                        "allowed_x_handles": settings.trusted_x_accounts,
-                    }
-                ]
+        search_llm = llm.bind_tools([
+            {
+                "type": "x_search",
+                "allowed_x_handles": settings.trusted_x_accounts,
             }
-        )
+        ])
 
         json_prompt = (
             initial_system
