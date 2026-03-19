@@ -37,27 +37,38 @@ when referencing document content and [Source: X/Twitter account] when referenci
 Disclaimers are provided elsewhere. No need to remind users to consult healthcare professionals for personal medical advice."""
 
     def grok_initial(state: AgentState):
-        last_message = state["messages"][-1]
-        try:
-            structured_llm = llm.with_structured_output(InitialAnalysis)
-            result = structured_llm.invoke(
-                [SystemMessage(content=initial_system), last_message]
-            )
-        except Exception:
-            # Fallback: parse JSON manually if structured output isn't supported
-            from langchain_core.messages import HumanMessage
-            import json as _json
+        import json as _json
 
-            fallback_prompt = (
-                initial_system
-                + "\n\nRespond with ONLY a JSON object with keys "
-                '"initial_response" and "refined_query". No other text.'
-            )
-            raw = llm.invoke(
-                [SystemMessage(content=fallback_prompt), last_message]
-            )
-            parsed = _json.loads(raw.content)
-            result = InitialAnalysis(**parsed)
+        last_message = state["messages"][-1]
+
+        # Bind xAI's native X/Twitter search tool so Grok can pull live posts
+        search_llm = llm.bind(
+            extra_body={
+                "tools": [
+                    {
+                        "type": "x_search",
+                        "allowed_x_handles": settings.trusted_x_accounts,
+                    }
+                ]
+            }
+        )
+
+        json_prompt = (
+            initial_system
+            + "\n\nRespond with ONLY a JSON object with keys "
+            '"initial_response" and "refined_query". No other text.'
+        )
+        raw = search_llm.invoke(
+            [SystemMessage(content=json_prompt), last_message]
+        )
+
+        # Strip markdown code fences if present
+        content = raw.content.strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+
+        parsed = _json.loads(content)
+        result = InitialAnalysis(**parsed)
 
         return {
             "initial_response": result.initial_response,
