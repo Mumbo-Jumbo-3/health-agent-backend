@@ -4,13 +4,13 @@ from pydantic import BaseModel
 
 from health_agent.config import Settings
 from health_agent.models import get_chat_model
-from health_agent.rag.retriever import get_retriever
+from health_agent.rag.retriever import get_vectorstore
 from health_agent.state import AgentState
 
 
 class InitialAnalysis(BaseModel):
     initial_response: str
-    refined_query: str
+    refined_queries: list[str]
 
 
 def build_graph(settings: Settings):
@@ -24,8 +24,10 @@ health question, do two things:
 Prioritize content from these trusted X/Twitter accounts: {accounts}. \
 Cite or reference their posts where relevant.
 
-2. **refined_query**: Rewrite the user's question into a keyword-rich semantic search query \
-optimized for retrieving relevant documents from a health and wellness vector store."""
+2. **refined_queries**: Generate 3-4 keyword-rich semantic search queries that approach \
+the user's question from different angles (e.g., biochemistry, lifestyle factors, \
+dietary connections, symptoms). Optimize for retrieving diverse, relevant documents \
+from a health and wellness vector store."""
 
     synthesis_system = f"""You are a knowledgeable health and wellness assistant. You will receive \
 two sections: an initial analysis and retrieved documents from a wellness resource library.
@@ -62,7 +64,7 @@ Disclaimers are provided elsewhere. No need to remind users to consult healthcar
         json_prompt = (
             initial_system
             + "\n\nRespond with ONLY a JSON object with keys "
-            '"initial_response" and "refined_query". No other text.'
+            '"initial_response" and "refined_queries". No other text.'
         )
         raw = search_llm.invoke(
             [SystemMessage(content=json_prompt), last_message]
@@ -93,18 +95,29 @@ Disclaimers are provided elsewhere. No need to remind users to consult healthcar
 
         return {
             "initial_response": clean_response,
-            "refined_query": result.refined_query,
+            "refined_queries": result.refined_queries,
         }
 
     def rag_retrieve(state: AgentState):
-        retriever = get_retriever(settings)
-        docs = retriever.invoke(state["refined_query"])
+        vectorstore = get_vectorstore(settings)
+        seen = set()
+        all_docs = []
 
-        if not docs:
+        for query in state["refined_queries"]:
+            docs = vectorstore.max_marginal_relevance_search(
+                query, k=3, fetch_k=10, lambda_mult=0.7
+            )
+            for doc in docs:
+                content_hash = hash(doc.page_content)
+                if content_hash not in seen:
+                    seen.add(content_hash)
+                    all_docs.append(doc)
+
+        if not all_docs:
             return {"rag_context": "No relevant documents found."}
 
         chunks = []
-        for doc in docs:
+        for doc in all_docs[:10]:
             source = doc.metadata.get("source", "unknown")
             chunks.append(f"[Source: {source}]\n{doc.page_content}")
 

@@ -2,13 +2,12 @@ import json
 import time
 from pathlib import Path
 
-from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_openai import OpenAIEmbeddings
 
 from health_agent.config import Settings
 
 
-def get_retriever(settings: Settings, k: int = 4) -> VectorStoreRetriever:
+def get_vectorstore(settings: Settings):
     from chromadb import PersistentClient
     from langchain_chroma import Chroma
 
@@ -18,12 +17,11 @@ def get_retriever(settings: Settings, k: int = 4) -> VectorStoreRetriever:
     )
 
     client = PersistentClient(path=str(settings.chroma_persist_dir))
-    vectorstore = Chroma(
+    return Chroma(
         collection_name="health_docs",
         embedding_function=embeddings,
         client=client,
     )
-    return vectorstore.as_retriever(search_kwargs={"k": k})
 
 
 def needs_reindex(settings: Settings) -> bool:
