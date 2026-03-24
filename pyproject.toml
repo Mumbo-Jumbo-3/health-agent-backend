@@ -16,6 +16,9 @@ dependencies = [
     "langchain-chroma>=1.1",
     "langgraph-cli[inmem]>=0.4",
     "langsmith>=0.7.19",
+    "rank-bm25>=0.2.2",
+    "langchain-community>=0.4.1",
+    "flashrank>=0.2.10",
 ]
 
 [project.scripts]
@@ -30,6 +33,11 @@ testpaths = ["tests"]
 
 [dependency-groups]
 dev = [
+    "beautifulsoup4>=4.14.3",
+    "google-genai>=1.68.0",
+    "httpx>=0.28.1",
+    "markdownify>=1.2.2",
+    "pymupdf>=1.27.2.2",
     "pytest>=9.0",
     "pytest-asyncio>=1.3",
 ]

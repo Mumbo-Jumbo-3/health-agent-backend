@@ -1,0 +1,51 @@
+cellular-toxicity, and organ-toxicity) using computer modeling with in vitro test systems based on biochemical methods using enzyme and tissue culture assays; and additional animal feeding studies using the radiation-induced chemical(s) (RP or URP) in question and not the irradiated whole food!
+
+In my opinion, whole foods, irradiated under controlled, laboratory conditions, should only be employed for nutritional-biochemical and molecular biological studies in animals fed balanced and special diets consisting of these irradiated foods and the components and sub-components of the irradiated foods that are of concern.
+
+Please introduce my Proposed Research Plan during your WHO Consultation: Update on Food Irradiation meeting. I believe this Proposed Research Plan will provide both a relevant context for analyses and discussions and a useful framework for identifying data gaps in the existing compilation of research performed to date; in addition, I trust this Proposed Research Plan will identify fruitful areas for future research. Also, please place my name on your mailing list to receive your publications and notices.
+
+Thank you for your time and consideration of my request. If you have either comments or questions, please feel free to telephone me at home at any time - 415-712-8008 for discussions, messages, or FAX transmissions.
+
+Jeffrey H. Reinhardt, M.Sc.
+Consultant in Nutritional-Biochemistry
+25 Mitchell Blvd., #8
+San Rafael, California 94903
+
+# Failures Of Immunity
+
+Editor:
+
+From ancient times until the 1940s, young adulthood was the healthiest phase of life, with an insignificant rate of death from disease. Septicemia, bacterial infection in the blood, had been associated with the natural immune deficiency of old age. By the 1960s septicemia was killing many young adults, in spite of the susceptibility of the germs to antibiotics.1,2 The use of antibiotics did save enough immune deficient people from septicemia to allow an increasing incidence of other diseases, including Pneumocystis carinii pneumonia, to become apparent. Acquired immune deficiency (AIDS) was a recognized syndrome for many years, and it was known to be increasing long before the 1980s.3
+
+P.H. Duesberg had made the point that most of the present AIDS epidemic can be explained by the various known causes other than the HIV virus. I think he is mostly right, but I don't exclude the possibility that the virus in itself could be a significant cause of the disease. My judgement would be that the virus is a "co-factor" in the disease, and by this I mean that we have been exposed to an increasing burden of immunosuppressive factors, which are causing an exponentially rising curve of immunodeficiency diseases, and that, arriving at a certain point on that curve, the HIV virus would help to push the rate of increase upward.
+
+Besides the generally increasing industrialization and pollution, in the 1950s there were sudden increases in our exposure to several powerfully immunosuppressive factors. Radioactive fallout (especially strontium 90, which concentrated its damage near the bone marrow), medical X-rays, dioxins and other chlorinated carbon compounds, insecticides and herbicides, the increased promotion of the use of liquid vegetable oils as food, and the use of lead as a gasoline additive, had all become important immunosuppressive factors by 1960. The relative importance of these varied with the person's age, vocation, customary diet, social class, etc. For example, rich people were more likely to have prenatal X-rays, and poor people were more likely to have lindane applied to their skin to kill lice.
+
+A low level of the hormone DHEA is associated with premature death from various causes, including cancer, heart disease, and AIDS. DHEA is one of the youth-associated, energy-promoting, anesthetic steroids which I have described as essential to our natural resistance. (For example, in "Natural Immunity and Viral Infections," Ray Peat's Newsletter #49, July, 1986, I said "Pregnenolone, progesterone, DHEA, and pregnanediol are all good candidates as anti-viral drugs, but etiocholanolone - which also produces fever - is the most interesting of the group.) In general, the things that lower vitality and immunity interfere with our ability to produce the protective steroids.
+
+Those hormones are made from cholesterol, and both low and high concentrations of blood cholesterol are associated with immune defects. Most of the people I have talked to who have multiple serious allergies have very low cholesterol levels, and hypothyroid people who are very susceptible to infections usually have high cholesterol, and in both situations there is an adequate production of hormones from cholesterol.
+
+Often, the idea of "auto-immune disease" serves as an excuse for the use of immunosuppressive treatments, such as glucocorticoids or methotrexate, so I usually avoid the word and the concept. Antibodies against specific tissues are probably part of a normal process to take care of damaged cells. For example, simply twisting a piece of cartilage makes it antigenic. After talking to many people who had anti-thyroid antibodies which disappeared soon after their thyroids became normal from physiological therapies, I decided that "auto-immune antibodies were useful to indicate which organ was under stress, but shouldn't be taken as a sign of an "immunological disease." Still, the immune system, like any system, can become ineffective or sick, and it is possible that a sick immune system could make some problems worse. (I have previously used the analogy of an "allergy" to discuss this view of AIDS.)
+
+Morphine has been known to be immunosuppressive for several decades, though this fact has been ignored in prescribing it for cancer patients. (Intravenous ethanol has a protective effect on the immune system, and is as effective as morphine in controlling the pain of cancer.) Morphine's directly suppressive effect on immunity isn't understood, but there is some suspicion that it relates to the stress-induced immunosuppression (loss of natural killer cell function, for example), acting in place of stress-induced endorphins. White blood cells, like nerve cells, have surface "receptors" for morphine, which normally would be acted on by the endorphins. As an abnormal material bound to the cell surface, it probably constitutes a "hapten," something sensed by other white blood cells as foreign. It would be healthy to eliminate such abnormally modified cells, and even possibly to eliminate the cells that contain the natural endorphin molecule. But in a weakened organism, the formation of new cells might lag behind the elimination of modified cells: Duesberg has said that it seems illogical that a person should get sick, just as he is beginning to produce large numbers of antibodies to the HIV virus, but it wouldn't be illogical if the antibodies were eliminating cells faster than they could be replaced. His point, that only one cell in 100 carrying the virus isn't enough to cause failure of the immune system, is true, other things being normal. But an allergy can be triggered by very small quantities of allergen. In a failing immune system, a few molecules of morphine or a few viral antigens could be enough to trigger a kind of autoimmune/allergic response, which could cause a massive suppression or disorganization of immune function.
+
+But even if such a thing is involved in AIDS - even if the HIV virus is a true cause of AIDS - Duesberg is right in emphasizing that we have to think of immune deficiency in a broader context, of eliminating all the immunosuppressive factors, and understanding the real nature of the immune system.
+
+If antibodies turn out to be part of the problem, we shouldn't think of searching for additional immunosuppressive drugs, because we already know of situations in which antibody production increases while immunity is being impaired, as if in compensation for a weakness in cell-mediated immunity. Increasing the production of the cells that are deficient, and improving their functioning, should be the focus of attention. The increased incidence of septicemia among young adults suggests that phagocytosis was deficient. Since Metchnikoff's time there hasn't been much interest in the phagocytes, but I think that is beginning to change.
+
+Note:
+Folic acid is so important for proliferation and differentiation that I think it's worthwhile to take about 5 mg. daily for a week or two. Vitamin A is important for resistance, but carotene can interfere with retinol. Carotenemia suggests a lack of vitamin B12 or thyroid, and interferes with thyroid and steroid production.
+
+Another thought: if you ate vegetables, whole grains and legumes in the 1960s, your bones are rich in strontium 90. Vigorous osteoclasts are working to get rid of it, by phagocytosis. Warm bones are young bones.
+
+## References
+
+1.  M.E. McKenry and W.A. Hawk, "Bacteremia caused by gram-negative bacteria," Mod. Clin. North Amer. 58 (3), 623. 1974.
+2.  J.M. Gould and S.A. Goldman, *Deadly Deceit*, Four Walls Eight Windows, New York. 1990.
+3.  E. Gold, "Infections associated with immunologic deficiency diseases," Mod. Clin. North Amer. 58(3): 649, 1974.
+
+Raymond Peat, Ph.D.
+Ray Peat's Newsletter
+P.O. Box 3427
+Eugene, Oregon 97403
+503-345-9855

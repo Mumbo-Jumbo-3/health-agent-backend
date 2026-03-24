@@ -23,7 +23,16 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-sonnet-4-20250514"
     xai_model: str = "grok-4-1-fast-reasoning"
 
-    embedding_model: str = "text-embedding-3-small"
+    embedding_model: str = "text-embedding-3-large"
+
+    reranker_model: str = "ms-marco-MiniLM-L-12-v2"
+    reranker_top_k: int = 8
+    retrieval_k: int = 5
+    bm25_k: int = 12
+    retrieval_fetch_k: int = 20
+    bm25_weight: float = 0.4
+    vector_weight: float = 0.6
+    reranker_score_threshold: float = 0.2
 
     trusted_x_accounts: list[str] = ["helios_movement", "grimhood", "aestheticprimal", "hubermanlab", "foundmyfitness", "outdoctrination"]
 

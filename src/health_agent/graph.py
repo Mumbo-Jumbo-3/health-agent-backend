@@ -1,11 +1,43 @@
-from langchain_core.messages import AIMessage, SystemMessage
+import logging
+from hashlib import sha256
+
+from langchain_core.documents import Document
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 from pydantic import BaseModel
 
 from health_agent.config import Settings
 from health_agent.models import get_chat_model
-from health_agent.rag.retriever import get_vectorstore
+from health_agent.rag.retriever import get_bm25_retriever, get_vectorstore, rerank_documents
 from health_agent.state import AgentState
+
+
+logger = logging.getLogger(__name__)
+
+
+def _content_id(doc: Document) -> str:
+    """Stable fingerprint including source for correct provenance."""
+    source = doc.metadata.get("source", "")
+    return sha256(f"{source}:{doc.page_content}".encode()).hexdigest()
+
+
+def reciprocal_rank_fusion(
+    result_lists: list[list[Document]],
+    weights: list[float],
+    k: int = 60,
+) -> list[Document]:
+    """Fuse multiple ranked lists using weighted Reciprocal Rank Fusion."""
+    doc_scores: dict[str, tuple[float, Document]] = {}
+    for results, weight in zip(result_lists, weights):
+        for rank, doc in enumerate(results):
+            doc_id = _content_id(doc)
+            score = weight / (k + rank + 1)
+            if doc_id in doc_scores:
+                doc_scores[doc_id] = (doc_scores[doc_id][0] + score, doc_scores[doc_id][1])
+            else:
+                doc_scores[doc_id] = (score, doc)
+    sorted_docs = sorted(doc_scores.values(), key=lambda x: x[0], reverse=True)
+    return [doc for _, doc in sorted_docs]
 
 
 class InitialAnalysis(BaseModel):
@@ -85,7 +117,19 @@ Disclaimers are provided elsewhere. No need to remind users to consult healthcar
         # Strip <grok:render> citation tags returned by the Responses API
         content = _re.sub(r"<grok:render[^>]*>.*?</grok:render>", "", content, flags=_re.DOTALL)
 
-        parsed = _json.loads(content)
+        try:
+            parsed = _json.loads(content)
+        except _json.JSONDecodeError:
+            # Try to extract a JSON object from mixed content
+            match = _re.search(r"\{[\s\S]*\}", content)
+            if match:
+                parsed = _json.loads(match.group())
+            else:
+                # Graceful degradation: treat entire response as the answer,
+                # fall back to the original query so RAG retrieval still runs
+                logger.warning("Failed to parse JSON from initial analysis; using original query for RAG")
+                parsed = {"initial_response": content, "refined_queries": [last_message.content]}
+
         result = InitialAnalysis(**parsed)
 
         # Also strip citation tags from the initial_response before passing downstream
@@ -100,46 +144,54 @@ Disclaimers are provided elsewhere. No need to remind users to consult healthcar
 
     def rag_retrieve(state: AgentState):
         vectorstore = get_vectorstore(settings)
-        seen = set()
-        all_docs = []
+        bm25_retriever = get_bm25_retriever(settings)
+        result_lists = []
+        weights = []
 
         for query in state["refined_queries"]:
-            docs = vectorstore.max_marginal_relevance_search(
-                query, k=3, fetch_k=10, lambda_mult=0.7
-            )
-            for doc in docs:
-                content_hash = hash(doc.page_content)
-                if content_hash not in seen:
-                    seen.add(content_hash)
-                    all_docs.append(doc)
+            # Vector search (MMR for diversity)
+            result_lists.append(vectorstore.max_marginal_relevance_search(
+                query,
+                k=settings.retrieval_k,
+                fetch_k=settings.retrieval_fetch_k,
+                lambda_mult=0.7,
+            ))
+            weights.append(settings.vector_weight)
+            # BM25 keyword search
+            result_lists.append(bm25_retriever.invoke(query))
+            weights.append(settings.bm25_weight)
+
+        # Single RRF pass across all queries — documents relevant to
+        # multiple queries accumulate scores instead of being deduped away.
+        all_docs = reciprocal_rank_fusion(result_lists, weights)
 
         if not all_docs:
             return {"rag_context": "No relevant documents found."}
 
+        # Rerank against the original user query
+        original_query = state["messages"][-1].content
+        reranked = rerank_documents(original_query, all_docs, settings)
+
         chunks = []
-        for doc in all_docs[:10]:
+        for doc in reranked:
             source = doc.metadata.get("source", "unknown")
             chunks.append(f"[Source: {source}]\n{doc.page_content}")
 
         return {"rag_context": "\n---\n".join(chunks)}
 
     def synthesize(state: AgentState):
+        original_question = state["messages"][-1].content
         user_content = (
+            f"## User Question\n{original_question}\n\n"
             f"## Initial Analysis\n{state['initial_response']}\n\n"
             f"## Retrieved Documents\n{state['rag_context']}"
         )
 
-        messages = [SystemMessage(content=synthesis_system)]
-        # Include conversation history (all but the last user message, which we enrich)
-        for msg in state["messages"][:-1]:
-            messages.append(msg)
-        # Add the enriched user message
-        messages.append(
-            AIMessage(content="Let me analyze this with my knowledge and your documents...")
-        )
-        from langchain_core.messages import HumanMessage
-
-        messages.append(HumanMessage(content=user_content))
+        messages = [
+            SystemMessage(content=synthesis_system),
+            *state["messages"][:-1],
+            HumanMessage(content=user_content),
+        ]
 
         response = llm.invoke(messages)
         return {"messages": [response]}
