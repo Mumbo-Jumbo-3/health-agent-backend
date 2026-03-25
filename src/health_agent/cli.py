@@ -8,12 +8,19 @@ app = typer.Typer(help="Health Agent — RAG-powered wellness assistant")
 
 
 @app.command()
-def ingest():
+def ingest(
+    force: bool = typer.Option(False, "--force", "-f", help="Force re-index even if resources are unchanged"),
+):
     """Ingest wellness resources from the resources directory."""
     from health_agent.rag.ingest import ingest_resources
-    from health_agent.rag.retriever import mark_indexed
+    from health_agent.rag.retriever import mark_indexed, needs_reindex
 
     settings = get_settings()
+
+    if not force and not needs_reindex(settings):
+        print("Index is up to date — skipping ingestion. Use --force to rebuild.")
+        return
+
     result = ingest_resources(settings)
     if result is not None:
         mark_indexed(settings)
