@@ -181,9 +181,10 @@ class TestGrokInitialJsonParsing:
         fn = self._make_grok_fn(content)
         result = fn({"messages": [HumanMessage(content="test")]})
 
-        # Falls back to treating content as the response with no queries
+        # Falls back to treating content as the response; refined_queries
+        # defaults to [original_message] so RAG retrieval still runs.
         assert "magnesium" in result["initial_response"]
-        assert result["refined_queries"] == []
+        assert result["refined_queries"] == ["test"]
 
     def test_grok_render_tags_stripped(self):
         """Citation tags in initial_response should be stripped."""
@@ -260,3 +261,67 @@ class TestOptionAFailure:
         # The tools kwarg is NOT preserved — this is the known limitation
         assert "tools" not in bound_llm.kwargs
         assert "response_format" in bound_llm.kwargs
+
+
+# ---------------------------------------------------------------------------
+# Parallel topology verification
+# ---------------------------------------------------------------------------
+
+
+def test_graph_has_parallel_topology():
+    """Verify grok_initial and rag_retrieve fan out from START, fan in to synthesize."""
+    settings = Settings(llm_provider=LLMProvider.OPENAI, openai_api_key="test-key")
+    graph = build_graph(settings)
+    graph_data = graph.get_graph()
+
+    # Both nodes should have an edge from __start__
+    start_targets = {e.target for e in graph_data.edges if e.source == "__start__"}
+    assert "grok_initial" in start_targets
+    assert "rag_retrieve" in start_targets
+
+    # Both nodes should have an edge to synthesize
+    synthesize_sources = {e.source for e in graph_data.edges if e.target == "synthesize"}
+    assert "grok_initial" in synthesize_sources
+    assert "rag_retrieve" in synthesize_sources
+
+    # synthesize should lead to __end__
+    end_sources = {e.source for e in graph_data.edges if e.target == "__end__"}
+    assert "synthesize" in end_sources
+
+
+# ---------------------------------------------------------------------------
+# rag_retrieve uses original query, not refined_queries
+# ---------------------------------------------------------------------------
+
+
+class TestRagRetrieveUsesOriginalQuery:
+    """Verify rag_retrieve searches with the user's original message."""
+
+    def test_calls_vectorstore_and_bm25_with_original_query(self):
+        mock_vectorstore = MagicMock()
+        mock_vectorstore.max_marginal_relevance_search.return_value = []
+
+        mock_bm25 = MagicMock()
+        mock_bm25.invoke.return_value = []
+
+        with patch("health_agent.graph.get_vectorstore", return_value=mock_vectorstore), \
+             patch("health_agent.graph.get_bm25_retriever", return_value=mock_bm25):
+            fn = _get_node_func("rag_retrieve")
+            state = {
+                "messages": [HumanMessage(content="benefits of magnesium")],
+                "refined_queries": ["should be ignored"],
+                "initial_response": "",
+                "rag_context": "",
+            }
+            result = fn(state)
+
+        # Vector search called with original query
+        mock_vectorstore.max_marginal_relevance_search.assert_called_once()
+        call_args = mock_vectorstore.max_marginal_relevance_search.call_args
+        assert call_args[0][0] == "benefits of magnesium"
+
+        # BM25 called with original query
+        mock_bm25.invoke.assert_called_once_with("benefits of magnesium")
+
+        # No documents → fallback context
+        assert result["rag_context"] == "No relevant documents found."

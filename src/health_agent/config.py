@@ -27,12 +27,12 @@ class Settings(BaseSettings):
 
     reranker_model: str = "ms-marco-MiniLM-L-12-v2"
     reranker_top_k: int = 8
-    retrieval_k: int = 5
-    bm25_k: int = 12
-    retrieval_fetch_k: int = 20
+    retrieval_k: int = 10
+    bm25_k: int = 20
+    retrieval_fetch_k: int = 40
     bm25_weight: float = 0.4
     vector_weight: float = 0.6
-    reranker_score_threshold: float = 0.2
+    reranker_score_threshold: float = 0.05
 
     trusted_x_accounts: list[str] = ["helios_movement", "grimhood", "aestheticprimal", "hubermanlab", "foundmyfitness", "outdoctrination"]
 

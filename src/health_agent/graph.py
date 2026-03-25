@@ -3,7 +3,7 @@ from hashlib import sha256
 
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langgraph.graph import END, StateGraph
+from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel
 
 from health_agent.config import Settings
@@ -145,31 +145,28 @@ Disclaimers are provided elsewhere. No need to remind users to consult healthcar
     def rag_retrieve(state: AgentState):
         vectorstore = get_vectorstore(settings)
         bm25_retriever = get_bm25_retriever(settings)
-        result_lists = []
-        weights = []
+        original_query = state["messages"][-1].content
 
-        for query in state["refined_queries"]:
-            # Vector search (MMR for diversity)
-            result_lists.append(vectorstore.max_marginal_relevance_search(
-                query,
-                k=settings.retrieval_k,
-                fetch_k=settings.retrieval_fetch_k,
-                lambda_mult=0.7,
-            ))
-            weights.append(settings.vector_weight)
-            # BM25 keyword search
-            result_lists.append(bm25_retriever.invoke(query))
-            weights.append(settings.bm25_weight)
+        # Vector search (MMR for diversity)
+        vector_results = vectorstore.max_marginal_relevance_search(
+            original_query,
+            k=settings.retrieval_k,
+            fetch_k=settings.retrieval_fetch_k,
+            lambda_mult=0.7,
+        )
+        # BM25 keyword search
+        bm25_results = bm25_retriever.invoke(original_query)
 
-        # Single RRF pass across all queries — documents relevant to
-        # multiple queries accumulate scores instead of being deduped away.
-        all_docs = reciprocal_rank_fusion(result_lists, weights)
+        # RRF fusion of the two retrieval strategies
+        all_docs = reciprocal_rank_fusion(
+            [vector_results, bm25_results],
+            [settings.vector_weight, settings.bm25_weight],
+        )
 
         if not all_docs:
             return {"rag_context": "No relevant documents found."}
 
         # Rerank against the original user query
-        original_query = state["messages"][-1].content
         reranked = rerank_documents(original_query, all_docs, settings)
 
         chunks = []
@@ -201,9 +198,14 @@ Disclaimers are provided elsewhere. No need to remind users to consult healthcar
     graph.add_node("rag_retrieve", rag_retrieve)
     graph.add_node("synthesize", synthesize)
 
-    graph.set_entry_point("grok_initial")
-    graph.add_edge("grok_initial", "rag_retrieve")
+    # Fan-out: both nodes run in parallel from START
+    graph.add_edge(START, "grok_initial")
+    graph.add_edge(START, "rag_retrieve")
+
+    # Fan-in: synthesize waits for both to complete
+    graph.add_edge("grok_initial", "synthesize")
     graph.add_edge("rag_retrieve", "synthesize")
+
     graph.add_edge("synthesize", END)
 
     return graph.compile()
