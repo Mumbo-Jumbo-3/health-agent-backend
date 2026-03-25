@@ -130,7 +130,10 @@ def ingest_resources(settings: Settings):
         embedding_function=embeddings,
         client=client,
     )
-    vectorstore.add_documents(chunks)
+    # ChromaDB has a max batch size of 5461; add in batches
+    batch_size = 5000
+    for i in range(0, len(chunks), batch_size):
+        vectorstore.add_documents(chunks[i : i + batch_size])
     del vectorstore  # drop reference so client refcount can reach zero
     client.close()  # release SQLite handles before directory swap
 
