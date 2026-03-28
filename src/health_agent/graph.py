@@ -65,8 +65,7 @@ from a health and wellness vector store."""
 two sections: an initial analysis and retrieved documents from a wellness resource library.
 
 Your job is to weave both into a single, cohesive narrative response. Integrate the document \
-information naturally — do not list sources separately. Cite sources inline using [Source: filename] \
-when referencing document content and [Source: X/Twitter account] when referencing X/Twitter posts.
+information naturally — do not list sources separately or cite filenames.
 
 Disclaimers are provided elsewhere. No need to remind users to consult healthcare professionals for personal medical advice."""
 
@@ -172,7 +171,7 @@ Disclaimers are provided elsewhere. No need to remind users to consult healthcar
         chunks = []
         for doc in reranked:
             source = doc.metadata.get("source", "unknown")
-            chunks.append(f"[Source: {source}]\n{doc.page_content}")
+            chunks.append(doc.page_content)
 
         return {"rag_context": "\n---\n".join(chunks)}
 

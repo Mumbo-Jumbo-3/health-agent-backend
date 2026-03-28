@@ -68,7 +68,7 @@ class TestSynthesizeIncludesQuestion:
         sent = self._run_synthesize(
             messages=[user_msg],
             initial_response="Magnesium helps with sleep...",
-            rag_context="[Source: doc.pdf]\nMagnesium is essential...",
+            rag_context="Magnesium is essential...",
         )
 
         human_msgs = [m for m in sent if isinstance(m, HumanMessage)]
@@ -87,7 +87,7 @@ class TestSynthesizeIncludesQuestion:
         sent = self._run_synthesize(
             messages=history,
             initial_response="Vitamin D and magnesium are synergistic...",
-            rag_context="[Source: doc.pdf]\nVitamin D absorption...",
+            rag_context="Vitamin D absorption...",
         )
 
         human_msgs = [m for m in sent if isinstance(m, HumanMessage)]
