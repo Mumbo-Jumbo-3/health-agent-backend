@@ -126,12 +126,12 @@ def _run_search_retrieval(
 
     for query in queries:
         vector_results = query_vector_chunks(query, settings)
-        bm25_results = query_keyword_chunks(query, settings)
+        keyword_results = query_keyword_chunks(query, settings)
 
-        result_lists.extend([vector_results, bm25_results])
+        result_lists.extend([vector_results, keyword_results])
         weights.extend([
             settings.vector_weight / query_weight_divisor,
-            settings.bm25_weight / query_weight_divisor,
+            settings.keyword_weight / query_weight_divisor,
         ])
 
     fused = reciprocal_rank_fusion(result_lists, weights)

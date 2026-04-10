@@ -148,7 +148,7 @@ def query_keyword_chunks(query: str, settings: Settings) -> list[Document]:
             select(AgentResourceChunk, rank)
             .where(weighted_tsvector.op("@@")(tsquery))
             .order_by(rank.desc(), AgentResourceChunk.chunk_index.asc())
-            .limit(settings.bm25_k)
+            .limit(settings.keyword_k)
         ).all()
 
     return [_chunk_to_document(row[0]) for row in rows]

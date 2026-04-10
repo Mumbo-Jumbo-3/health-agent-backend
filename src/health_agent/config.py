@@ -19,11 +19,11 @@ class Settings(BaseSettings):
     embedding_dimensions: int = 3072
 
     reranker_model: str = "ms-marco-MiniLM-L-12-v2"
-    reranker_top_k: int = 8
+    reranker_top_k: int = 12
     retrieval_k: int = 10
-    bm25_k: int = 20
-    retrieval_fetch_k: int = 40
-    bm25_weight: float = 0.4
+    keyword_k: int = 30
+    retrieval_fetch_k: int = 80
+    keyword_weight: float = 0.4
     vector_weight: float = 0.6
     reranker_score_threshold: float = 0.05
 
