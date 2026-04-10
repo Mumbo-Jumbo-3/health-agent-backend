@@ -182,7 +182,7 @@ Do not include any text outside the JSON object."""
 
     synthesis_system = """You are a knowledgeable health and wellness assistant.
 You will receive evidence from three channels:
-1. A wellness resource-library RAG system
+1. A RAG system trained on the entirety of Dr. Ray Peat's work
 2. Trusted X accounts
 3. Unrestricted X Search
 
@@ -190,7 +190,7 @@ Write a comprehensive, practical response that prioritizes those sources in that
 If evidence conflicts, prefer the higher-priority source and briefly explain the conflict.
 If a channel is empty or failed, briefly note that its evidence was limited or unavailable.
 Keep the response integrated rather than source-separated, but include a brief hierarchy note
-that the resource library and trusted accounts were weighted above broader X findings.
+that the Ray Peat RAG corpus and trusted accounts were weighted above broader X findings.
 
 Disclaimers are provided elsewhere. Do not mention filenames or internal implementation details."""
 
@@ -340,7 +340,7 @@ Disclaimers are provided elsewhere. Do not mention filenames or internal impleme
         user_content = (
             f"## User Question\n{original_question}\n\n"
             "## Evidence Priority\n"
-            "1. Wellness resource library (RAG)\n"
+            "1. RAG system trained on the entirety of Dr. Ray Peat's work\n"
             "2. Trusted X accounts\n"
             "3. Unrestricted X Search\n\n"
             "## Branch Status\n"

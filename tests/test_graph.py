@@ -293,6 +293,7 @@ def test_claude_synthesize_includes_question_and_statuses():
     content = human_messages[-1].content
 
     assert "What are the benefits of magnesium?" in content
+    assert "RAG system trained on the entirety of Dr. Ray Peat's work" in content
     assert "Trusted X Search: success" in content
     assert "Unrestricted X Search: empty" in content
     assert "## Trusted X Analysis" in content
