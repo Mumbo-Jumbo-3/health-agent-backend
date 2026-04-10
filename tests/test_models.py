@@ -1,26 +1,39 @@
-from health_agent.config import LLMProvider, Settings
-from health_agent.models import get_chat_model
+from health_agent.config import Settings
+from health_agent.models import (
+    get_claude_synthesis_model,
+    get_embeddings_model,
+    get_trusted_grok_model,
+    get_unrestricted_grok_model,
+)
 
 
-def test_openai_model():
-    settings = Settings(llm_provider=LLMProvider.OPENAI, openai_api_key="test-key")
-    model = get_chat_model(settings)
-    from langchain_openai import ChatOpenAI
+def test_trusted_grok_model():
+    settings = Settings(xai_api_key="test-key")
+    model = get_trusted_grok_model(settings)
+    from langchain_xai import ChatXAI
 
-    assert isinstance(model, ChatOpenAI)
+    assert isinstance(model, ChatXAI)
 
 
-def test_anthropic_model():
-    settings = Settings(llm_provider=LLMProvider.ANTHROPIC, anthropic_api_key="test-key")
-    model = get_chat_model(settings)
+def test_unrestricted_grok_model():
+    settings = Settings(xai_api_key="test-key")
+    model = get_unrestricted_grok_model(settings)
+    from langchain_xai import ChatXAI
+
+    assert isinstance(model, ChatXAI)
+
+
+def test_claude_synthesis_model():
+    settings = Settings(anthropic_api_key="test-key")
+    model = get_claude_synthesis_model(settings)
     from langchain_anthropic import ChatAnthropic
 
     assert isinstance(model, ChatAnthropic)
 
 
-def test_xai_model():
-    settings = Settings(llm_provider=LLMProvider.XAI, xai_api_key="test-key")
-    model = get_chat_model(settings)
-    from langchain_xai import ChatXAI
+def test_embeddings_model():
+    settings = Settings(openai_api_key="test-key")
+    model = get_embeddings_model(settings)
+    from langchain_openai import OpenAIEmbeddings
 
-    assert isinstance(model, ChatXAI)
+    assert isinstance(model, OpenAIEmbeddings)

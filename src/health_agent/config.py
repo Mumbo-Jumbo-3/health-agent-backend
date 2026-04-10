@@ -1,27 +1,18 @@
-from enum import StrEnum
 from pathlib import Path
 
 from pydantic_settings import BaseSettings
 
 
-class LLMProvider(StrEnum):
-    OPENAI = "openai"
-    ANTHROPIC = "anthropic"
-    XAI = "xai"
-
-
 class Settings(BaseSettings):
     model_config = {}
-
-    llm_provider: LLMProvider = LLMProvider.XAI
 
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     xai_api_key: str = ""
 
-    openai_model: str = "gpt-4o-mini"
-    anthropic_model: str = "claude-sonnet-4-20250514"
-    xai_model: str = "grok-4-1-fast-reasoning"
+    trusted_xai_model: str = "grok-4-1-fast-reasoning"
+    unrestricted_xai_model: str = "grok-4-1-fast-reasoning"
+    anthropic_synthesis_model: str = "claude-sonnet-4-20250514"
 
     embedding_model: str = "text-embedding-3-large"
 
@@ -34,7 +25,14 @@ class Settings(BaseSettings):
     vector_weight: float = 0.6
     reranker_score_threshold: float = 0.05
 
-    trusted_x_accounts: list[str] = ["helios_movement", "grimhood", "aestheticprimal", "hubermanlab", "foundmyfitness", "outdoctrination"]
+    trusted_x_accounts: list[str] = [
+        "helios_movement",
+        "grimhood",
+        "aestheticprimal",
+        "hubermanlab",
+        "foundmyfitness",
+        "outdoctrination",
+    ]
 
     resources_dir: Path = Path("resources")
     chroma_persist_dir: Path = Path(".chroma_db")

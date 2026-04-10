@@ -1,4 +1,6 @@
+import json
 import logging
+import re
 from hashlib import sha256
 
 from langchain_core.documents import Document
@@ -7,12 +9,22 @@ from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel
 
 from health_agent.config import Settings
-from health_agent.models import get_chat_model
+from health_agent.models import (
+    get_claude_synthesis_model,
+    get_trusted_grok_model,
+    get_unrestricted_grok_model,
+)
 from health_agent.rag.retriever import get_bm25_retriever, get_vectorstore, rerank_documents
 from health_agent.state import AgentState
 
 
 logger = logging.getLogger(__name__)
+
+STATUS_SUCCESS = "success"
+STATUS_EMPTY = "empty"
+STATUS_ERROR = "error"
+
+NO_RAG_RESULTS = "No relevant documents found."
 
 
 def _content_id(doc: Document) -> str:
@@ -40,50 +52,151 @@ def reciprocal_rank_fusion(
     return [doc for _, doc in sorted_docs]
 
 
-class InitialAnalysis(BaseModel):
+class TrustedSearchAnalysis(BaseModel):
     initial_response: str
     refined_queries: list[str]
 
 
+class UnrestrictedSearchAnalysis(BaseModel):
+    initial_response: str
+
+
+def _strip_grok_render_tags(content: str) -> str:
+    return re.sub(r"<grok:render[^>]*>.*?</grok:render>", "", content, flags=re.DOTALL)
+
+
+def _extract_raw_content(raw: AIMessage) -> str:
+    if isinstance(raw.content, list):
+        content = "\n".join(
+            block.get("text", "") if isinstance(block, dict) else str(block)
+            for block in raw.content
+            if not (isinstance(block, dict) and block.get("type") == "tool_use")
+        ).strip()
+    else:
+        content = str(raw.content).strip()
+
+    if content.startswith("```"):
+        content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+
+    return _strip_grok_render_tags(content).strip()
+
+
+def _parse_json_content(content: str) -> dict:
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        match = re.search(r"\{[\s\S]*\}", content)
+        if match:
+            return json.loads(match.group())
+        raise
+
+
+def _normalize_queries(queries: list[str], original_query: str) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for query in queries:
+        cleaned = query.strip()
+        if not cleaned:
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(cleaned)
+
+    if not normalized:
+        return [original_query]
+    return normalized
+
+
+def _search_status(content: str) -> str:
+    return STATUS_SUCCESS if content.strip() else STATUS_EMPTY
+
+
+def _run_search_retrieval(
+    queries: list[str],
+    settings: Settings,
+) -> list[Document]:
+    if not queries:
+        return []
+
+    vectorstore = get_vectorstore(settings)
+    bm25_retriever = get_bm25_retriever(settings)
+
+    result_lists: list[list[Document]] = []
+    weights: list[float] = []
+    query_weight_divisor = max(len(queries), 1)
+
+    for query in queries:
+        vector_results = vectorstore.max_marginal_relevance_search(
+            query,
+            k=settings.retrieval_k,
+            fetch_k=settings.retrieval_fetch_k,
+            lambda_mult=0.7,
+        )
+        bm25_results = bm25_retriever.invoke(query)
+
+        result_lists.extend([vector_results, bm25_results])
+        weights.extend([
+            settings.vector_weight / query_weight_divisor,
+            settings.bm25_weight / query_weight_divisor,
+        ])
+
+    fused = reciprocal_rank_fusion(result_lists, weights)
+    return fused[: settings.retrieval_fetch_k]
+
+
+def _docs_status(docs: list[Document]) -> str:
+    return STATUS_SUCCESS if docs else STATUS_EMPTY
+
+
+def _format_rag_context(docs: list[Document]) -> str:
+    if not docs:
+        return NO_RAG_RESULTS
+    return "\n---\n".join(doc.page_content for doc in docs)
+
+
 def build_graph(settings: Settings):
-    llm = get_chat_model(settings)
+    trusted_grok = get_trusted_grok_model(settings)
+    unrestricted_grok = get_unrestricted_grok_model(settings)
+    claude = get_claude_synthesis_model(settings)
     accounts = ", ".join(f"@{a}" for a in settings.trusted_x_accounts)
 
-    initial_system = f"""You are a knowledgeable health and wellness assistant. Given the user's \
-health question, do two things:
+    trusted_search_system = f"""You are a knowledgeable health and wellness assistant.
+Use X Search results to answer the user's question while prioritizing these trusted
+accounts: {accounts}.
 
-1. **initial_response**: Answer the query using search tools. \
-Prioritize content from these trusted X/Twitter accounts: {accounts}. \
-Cite or reference their posts where relevant.
+Return ONLY a JSON object with:
+- "initial_response": a practical analysis grounded in relevant posts from those accounts
+- "refined_queries": 3-4 keyword-rich semantic search queries for a wellness RAG library
 
-2. **refined_queries**: Generate 3-4 keyword-rich semantic search queries that approach \
-the user's question from different angles (e.g., biochemistry, lifestyle factors, \
-dietary connections, symptoms). Optimize for retrieving diverse, relevant documents \
-from a health and wellness vector store."""
+Do not include any text outside the JSON object."""
 
-    synthesis_system = f"""You are a knowledgeable health and wellness assistant. You will receive \
-two sections: an initial analysis and retrieved documents from a wellness resource library.
+    unrestricted_search_system = """You are a knowledgeable health and wellness assistant.
+Use unrestricted X Search results to answer the user's question.
 
-Your job is to weave both into a single, cohesive narrative response. Integrate the document \
-information naturally — do not list sources separately or cite filenames.
+Return ONLY a JSON object with:
+- "initial_response": a practical analysis grounded in relevant posts from X Search
 
-Disclaimers are provided elsewhere. No need to remind users to consult healthcare professionals for personal medical advice."""
+Do not include any text outside the JSON object."""
 
-    def grok_initial(state: AgentState):
-        import json as _json
-        import re as _re
+    synthesis_system = """You are a knowledgeable health and wellness assistant.
+You will receive evidence from three channels:
+1. A wellness resource-library RAG system
+2. Trusted X accounts
+3. Unrestricted X Search
 
+Write a comprehensive, practical response that prioritizes those sources in that order.
+If evidence conflicts, prefer the higher-priority source and briefly explain the conflict.
+If a channel is empty or failed, briefly note that its evidence was limited or unavailable.
+Keep the response integrated rather than source-separated, but include a brief hierarchy note
+that the resource library and trusted accounts were weighted above broader X findings.
+
+Disclaimers are provided elsewhere. Do not mention filenames or internal implementation details."""
+
+    def trusted_grok_search(state: AgentState):
         last_message = state["messages"][-1]
-
-        # Bind xAI's native X/Twitter search tool so Grok can pull live posts.
-        # Use bind() instead of bind_tools() because langchain-core doesn't
-        # recognize "x_search" as a well-known tool type and would try to
-        # convert it to a function schema. bind() passes it through directly
-        # and _use_responses_api() will route to the Responses API.
-        # Tag with "nostream" so the messages-tuple stream mode skips this
-        # intermediate LLM call and only the final synthesize response is
-        # streamed to the frontend.
-        search_llm = llm.with_config({"tags": ["nostream"]}).bind(
+        search_llm = trusted_grok.with_config({"tags": ["nostream"]}).bind(
             tools=[
                 {
                     "type": "x_search",
@@ -92,94 +205,152 @@ Disclaimers are provided elsewhere. No need to remind users to consult healthcar
             ]
         )
 
-        json_prompt = (
-            initial_system
-            + "\n\nRespond with ONLY a JSON object with keys "
-            '"initial_response" and "refined_queries". No other text.'
-        )
-        raw = search_llm.invoke(
-            [SystemMessage(content=json_prompt), last_message]
-        )
+        try:
+            raw = search_llm.invoke(
+                [SystemMessage(content=trusted_search_system), last_message]
+            )
+            content = _extract_raw_content(raw)
+            try:
+                parsed = _parse_json_content(content)
+            except json.JSONDecodeError:
+                logger.warning("Trusted Grok returned malformed JSON; using content fallback")
+                parsed = {
+                    "initial_response": content,
+                    "refined_queries": [str(last_message.content)],
+                }
 
-        # raw.content may be a list of content blocks when tools are used
-        if isinstance(raw.content, list):
-            content = "\n".join(
-                block.get("text", "") if isinstance(block, dict) else str(block)
-                for block in raw.content
-                if not (isinstance(block, dict) and block.get("type") == "tool_use")
-            ).strip()
-        else:
-            content = raw.content.strip()
-        if content.startswith("```"):
-            content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+            result = TrustedSearchAnalysis(**parsed)
+            cleaned_response = _strip_grok_render_tags(result.initial_response).strip()
+            refined_queries = _normalize_queries(result.refined_queries, str(last_message.content))
+            return {
+                "trusted_search_response": cleaned_response,
+                "trusted_refined_queries": refined_queries,
+                "trusted_search_status": _search_status(cleaned_response),
+            }
+        except Exception:
+            logger.exception("Trusted Grok search failed")
+            return {
+                "trusted_search_response": "Trusted-account X search failed.",
+                "trusted_refined_queries": [str(last_message.content)],
+                "trusted_search_status": STATUS_ERROR,
+            }
 
-        # Strip <grok:render> citation tags returned by the Responses API
-        content = _re.sub(r"<grok:render[^>]*>.*?</grok:render>", "", content, flags=_re.DOTALL)
+    def unrestricted_grok_search(state: AgentState):
+        last_message = state["messages"][-1]
+        search_llm = unrestricted_grok.with_config({"tags": ["nostream"]}).bind(
+            tools=[{"type": "x_search"}]
+        )
 
         try:
-            parsed = _json.loads(content)
-        except _json.JSONDecodeError:
-            # Try to extract a JSON object from mixed content
-            match = _re.search(r"\{[\s\S]*\}", content)
-            if match:
-                parsed = _json.loads(match.group())
-            else:
-                # Graceful degradation: treat entire response as the answer,
-                # fall back to the original query so RAG retrieval still runs
-                logger.warning("Failed to parse JSON from initial analysis; using original query for RAG")
-                parsed = {"initial_response": content, "refined_queries": [last_message.content]}
+            raw = search_llm.invoke(
+                [SystemMessage(content=unrestricted_search_system), last_message]
+            )
+            content = _extract_raw_content(raw)
+            try:
+                parsed = _parse_json_content(content)
+            except json.JSONDecodeError:
+                logger.warning("Unrestricted Grok returned malformed JSON; using content fallback")
+                parsed = {"initial_response": content}
 
-        result = InitialAnalysis(**parsed)
+            result = UnrestrictedSearchAnalysis(**parsed)
+            cleaned_response = _strip_grok_render_tags(result.initial_response).strip()
+            return {
+                "unrestricted_search_response": cleaned_response,
+                "unrestricted_search_status": _search_status(cleaned_response),
+            }
+        except Exception:
+            logger.exception("Unrestricted Grok search failed")
+            return {
+                "unrestricted_search_response": "Unrestricted X search failed.",
+                "unrestricted_search_status": STATUS_ERROR,
+            }
 
-        # Also strip citation tags from the initial_response before passing downstream
-        clean_response = _re.sub(
-            r"<grok:render[^>]*>.*?</grok:render>", "", result.initial_response, flags=_re.DOTALL
-        )
+    def rag_retrieve_base(state: AgentState):
+        original_query = str(state["messages"][-1].content)
+        try:
+            docs = _run_search_retrieval([original_query], settings)
+            return {
+                "base_rag_docs": docs,
+                "base_rag_status": _docs_status(docs),
+            }
+        except Exception:
+            logger.exception("Base RAG retrieval failed")
+            return {
+                "base_rag_docs": [],
+                "base_rag_status": STATUS_ERROR,
+            }
 
-        return {
-            "initial_response": clean_response,
-            "refined_queries": result.refined_queries,
-        }
+    def rag_retrieve_enrich(state: AgentState):
+        original_query = str(state["messages"][-1].content)
+        candidate_queries = [
+            query
+            for query in state["trusted_refined_queries"]
+            if query.strip().lower() != original_query.strip().lower()
+        ]
 
-    def rag_retrieve(state: AgentState):
-        vectorstore = get_vectorstore(settings)
-        bm25_retriever = get_bm25_retriever(settings)
-        original_query = state["messages"][-1].content
+        if not candidate_queries:
+            return {
+                "enrich_rag_docs": [],
+                "enrich_rag_status": STATUS_EMPTY,
+            }
 
-        # Vector search (MMR for diversity)
-        vector_results = vectorstore.max_marginal_relevance_search(
-            original_query,
-            k=settings.retrieval_k,
-            fetch_k=settings.retrieval_fetch_k,
-            lambda_mult=0.7,
-        )
-        # BM25 keyword search
-        bm25_results = bm25_retriever.invoke(original_query)
+        try:
+            docs = _run_search_retrieval(candidate_queries, settings)
+            return {
+                "enrich_rag_docs": docs,
+                "enrich_rag_status": _docs_status(docs),
+            }
+        except Exception:
+            logger.exception("Enriched RAG retrieval failed")
+            return {
+                "enrich_rag_docs": [],
+                "enrich_rag_status": STATUS_ERROR,
+            }
 
-        # RRF fusion of the two retrieval strategies
-        all_docs = reciprocal_rank_fusion(
-            [vector_results, bm25_results],
-            [settings.vector_weight, settings.bm25_weight],
-        )
+    def rag_merge(state: AgentState):
+        original_query = str(state["messages"][-1].content)
+        try:
+            merged_docs = reciprocal_rank_fusion(
+                [state["base_rag_docs"], state["enrich_rag_docs"]],
+                [1.0, 1.0],
+            )
+            reranked_docs = rerank_documents(original_query, merged_docs, settings)
+            rag_status = _docs_status(reranked_docs)
+            if rag_status == STATUS_EMPTY and (
+                state["base_rag_status"] == STATUS_ERROR
+                and state["enrich_rag_status"] == STATUS_ERROR
+            ):
+                rag_status = STATUS_ERROR
 
-        if not all_docs:
-            return {"rag_context": "No relevant documents found."}
+            return {
+                "merged_rag_docs": reranked_docs,
+                "rag_status": rag_status,
+                "rag_context": _format_rag_context(reranked_docs),
+            }
+        except Exception:
+            logger.exception("RAG merge failed")
+            return {
+                "merged_rag_docs": [],
+                "rag_status": STATUS_ERROR,
+                "rag_context": NO_RAG_RESULTS,
+            }
 
-        # Rerank against the original user query
-        reranked = rerank_documents(original_query, all_docs, settings)
-
-        chunks = []
-        for doc in reranked:
-            source = doc.metadata.get("source", "unknown")
-            chunks.append(doc.page_content)
-
-        return {"rag_context": "\n---\n".join(chunks)}
-
-    def synthesize(state: AgentState):
-        original_question = state["messages"][-1].content
+    def claude_synthesize(state: AgentState):
+        original_question = str(state["messages"][-1].content)
         user_content = (
             f"## User Question\n{original_question}\n\n"
-            f"## Initial Analysis\n{state['initial_response']}\n\n"
+            "## Evidence Priority\n"
+            "1. Wellness resource library (RAG)\n"
+            "2. Trusted X accounts\n"
+            "3. Unrestricted X Search\n\n"
+            "## Branch Status\n"
+            f"- Trusted X Search: {state['trusted_search_status']}\n"
+            f"- Unrestricted X Search: {state['unrestricted_search_status']}\n"
+            f"- Base RAG: {state['base_rag_status']}\n"
+            f"- Enriched RAG: {state['enrich_rag_status']}\n"
+            f"- RAG Aggregate: {state['rag_status']}\n\n"
+            f"## Trusted X Analysis\n{state['trusted_search_response']}\n\n"
+            f"## Unrestricted X Analysis\n{state['unrestricted_search_response']}\n\n"
             f"## Retrieved Documents\n{state['rag_context']}"
         )
 
@@ -189,22 +360,29 @@ Disclaimers are provided elsewhere. No need to remind users to consult healthcar
             HumanMessage(content=user_content),
         ]
 
-        response = llm.invoke(messages)
+        response = claude.invoke(messages)
         return {"messages": [response]}
 
     graph = StateGraph(AgentState)
-    graph.add_node("grok_initial", grok_initial)
-    graph.add_node("rag_retrieve", rag_retrieve)
-    graph.add_node("synthesize", synthesize)
+    graph.add_node("trusted_grok_search", trusted_grok_search)
+    graph.add_node("unrestricted_grok_search", unrestricted_grok_search)
+    graph.add_node("rag_retrieve_base", rag_retrieve_base)
+    graph.add_node("rag_retrieve_enrich", rag_retrieve_enrich)
+    graph.add_node("rag_merge", rag_merge)
+    graph.add_node("claude_synthesize", claude_synthesize)
 
-    # Fan-out: both nodes run in parallel from START
-    graph.add_edge(START, "grok_initial")
-    graph.add_edge(START, "rag_retrieve")
+    graph.add_edge(START, "trusted_grok_search")
+    graph.add_edge(START, "unrestricted_grok_search")
+    graph.add_edge(START, "rag_retrieve_base")
 
-    # Fan-in: synthesize waits for both to complete
-    graph.add_edge("grok_initial", "synthesize")
-    graph.add_edge("rag_retrieve", "synthesize")
+    graph.add_edge("trusted_grok_search", "rag_retrieve_enrich")
+    graph.add_edge(["rag_retrieve_base", "rag_retrieve_enrich"], "rag_merge")
 
-    graph.add_edge("synthesize", END)
+    graph.add_edge(
+        ["trusted_grok_search", "unrestricted_grok_search", "rag_merge"],
+        "claude_synthesize",
+    )
+
+    graph.add_edge("claude_synthesize", END)
 
     return graph.compile()

@@ -1,28 +1,33 @@
-from langchain_core.language_models import BaseChatModel
+from langchain_anthropic import ChatAnthropic
+from langchain_openai import OpenAIEmbeddings
+from langchain_xai import ChatXAI
 
-from health_agent.config import LLMProvider, Settings
+from health_agent.config import Settings
 
 
-def get_chat_model(settings: Settings) -> BaseChatModel:
-    match settings.llm_provider:
-        case LLMProvider.OPENAI:
-            from langchain_openai import ChatOpenAI
+def get_trusted_grok_model(settings: Settings) -> ChatXAI:
+    return ChatXAI(
+        model=settings.trusted_xai_model,
+        api_key=settings.xai_api_key,
+    )
 
-            return ChatOpenAI(
-                model=settings.openai_model,
-                api_key=settings.openai_api_key,
-            )
-        case LLMProvider.ANTHROPIC:
-            from langchain_anthropic import ChatAnthropic
 
-            return ChatAnthropic(
-                model=settings.anthropic_model,
-                api_key=settings.anthropic_api_key,
-            )
-        case LLMProvider.XAI:
-            from langchain_xai import ChatXAI
+def get_unrestricted_grok_model(settings: Settings) -> ChatXAI:
+    return ChatXAI(
+        model=settings.unrestricted_xai_model,
+        api_key=settings.xai_api_key,
+    )
 
-            return ChatXAI(
-                model=settings.xai_model,
-                api_key=settings.xai_api_key,
-            )
+
+def get_claude_synthesis_model(settings: Settings) -> ChatAnthropic:
+    return ChatAnthropic(
+        model=settings.anthropic_synthesis_model,
+        api_key=settings.anthropic_api_key,
+    )
+
+
+def get_embeddings_model(settings: Settings) -> OpenAIEmbeddings:
+    return OpenAIEmbeddings(
+        model=settings.embedding_model,
+        api_key=settings.openai_api_key,
+    )

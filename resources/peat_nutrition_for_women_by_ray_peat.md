@@ -1,19 +1,5 @@
 # Nutrition For Women By Ray Peat
 
-NUTRITION FOR WOMEN
-Fifth edition
-Copyright 1993 Raymond Peat
-P.O. Box 5764
-Eugene, Oregon 97405
-Other books by Ray Peat:
-Mind and Tissue
-Progesterone in Orthomolecular Medicine
-Generative Energy
-
-## INTRODUCTION
-
-Occasionally, I read parts of this book to see whether I still agree with the orientation I had when I was writing it, and I see that it seems to be far enough ahead of the general culture that it has something useful for almost anyone. Rather than changing it, I will just add some new information that I have been concentrating on in recent years.
-
 ### SALT
 
 On page 90 I mentioned "too much salt" as a cause of water retention. That phrase was a lazy gesture recognizing common medical opinion. If you suddenly increase your sodium intake, your body will take a day or two to adjust, and during that time you will retain a little extra water, but after the short adjustment time, you lose sodium at the same rate that you take it in. Under the influence of excess estrogen, your body retains extra water, and it is your appetite center which should balance that water by making you crave extra salt. If you learn to avoid salty foods at those times (or if you take a diuretic), your blood can't carry as much water as when it has enough salt, and so the salt stays in the tissues, rather than being carried to the kidneys. Tom Brewer demonstrated the importance of eating enough salt during pregnancy, to maintain adequate blood volume. When salt is restricted during pregnancy, the inadequate blood volume doesn't carry enough oxygen and food to the uterus to allow full development of the baby, and the kidneys secrete a hormone to increase the circulation, creating a tendency toward high blood pressure. Following Brewer's research, I saw that extra sodium should help in other situations involving circulatory inefficiency. Premenstrual edema, insomnia, and even high blood pressure often respond very well to a little extra sodium in the diet. One of the most important effects of sodium is that it tends to spare magnesium, which is likely to be lost during stress and hypothyroidism. If we eat salty foods when we crave them, we are able to retain our magnesium more easily. Sodium also helps to regulate blood sugar, for example by improving its absorption from the intestine. There is even evidence that sodium can spare protein, since, if there isn't enough sodium to excrete into the urine to balance acids, the kidneys will waste protein to produce ammonium as an ionic substitute for sodium. But I think the most important point to remember is that it is essential for maintaining adequate blood volume, and that it is almost always unphysiological and irrational to restrict sodium intake, because reduced blood volume tends to reduce the delivery of oxygen and nutrients to all tissues, leading to many problems. The emotional tension many people feel when they crave salt is, in some cases, the result of increased adrenalin, reflecting a real biological problem.

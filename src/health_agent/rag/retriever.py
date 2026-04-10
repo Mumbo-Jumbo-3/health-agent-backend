@@ -3,9 +3,9 @@ import time
 from pathlib import Path
 
 from langchain_core.documents import Document
-from langchain_openai import OpenAIEmbeddings
 
 from health_agent.config import Settings
+from health_agent.models import get_embeddings_model
 
 _bm25_cache: dict[str, object] = {}
 _reranker_cache: object | None = None
@@ -15,15 +15,10 @@ def get_vectorstore(settings: Settings):
     from chromadb import PersistentClient
     from langchain_chroma import Chroma
 
-    embeddings = OpenAIEmbeddings(
-        model=settings.embedding_model,
-        api_key=settings.openai_api_key,
-    )
-
     client = PersistentClient(path=str(settings.chroma_persist_dir))
     return Chroma(
         collection_name="health_docs",
-        embedding_function=embeddings,
+        embedding_function=get_embeddings_model(settings),
         client=client,
     )
 

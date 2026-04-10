@@ -1,8 +1,6 @@
-from typing import Optional
-
 import typer
 
-from health_agent.config import LLMProvider, get_settings
+from health_agent.config import get_settings
 
 app = typer.Typer(help="Health Agent — RAG-powered wellness assistant")
 
@@ -27,9 +25,7 @@ def ingest(
 
 
 @app.command()
-def chat(
-    provider: Optional[LLMProvider] = typer.Option(None, help="LLM provider to use"),
-):
+def chat():
     """Start an interactive chat session with the health agent."""
     from langchain_core.messages import HumanMessage
 
@@ -38,8 +34,6 @@ def chat(
     from health_agent.rag.retriever import mark_indexed, needs_reindex
 
     settings = get_settings()
-    if provider:
-        settings.llm_provider = provider
 
     if needs_reindex(settings):
         print("Indexing resources...")
@@ -50,7 +44,7 @@ def chat(
     graph = build_graph(settings)
     messages = []
 
-    print(f"Health Agent ({settings.llm_provider.value}) — type 'quit' to exit\n")
+    print("Health Agent (Grok search + RAG + Claude synthesis) — type 'quit' to exit\n")
 
     while True:
         try:
