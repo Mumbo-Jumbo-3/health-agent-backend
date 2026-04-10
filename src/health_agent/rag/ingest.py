@@ -1,21 +1,45 @@
+from dataclasses import dataclass
+from hashlib import sha256
 import re
-import shutil
 from pathlib import Path
 
 from langchain_core.documents import Document
-from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import (
     MarkdownHeaderTextSplitter,
     RecursiveCharacterTextSplitter,
 )
+from sqlalchemy import delete, select
 
 from health_agent.config import Settings
+from health_agent.db import AgentResource, AgentResourceChunk, get_session_factory
+from health_agent.db.models import EMBEDDING_DIMENSIONS, utc_now
+from health_agent.models import get_embeddings_model
+from health_agent.rag.resources import filesystem_resource_manifest, resource_files
 
 _AUTHOR_PREFIXES = {
     "peat_": "Dr. Ray Peat",
     "grimhood_": "Grimhood",
     "ferman_": "George Ferman",
 }
+
+
+@dataclass
+class IngestStats:
+    added_resources: int = 0
+    updated_resources: int = 0
+    deleted_resources: int = 0
+    chunk_rows_written: int = 0
+
+
+@dataclass
+class ResourceFileRecord:
+    file_path: Path
+    source_path: str
+    source_name: str
+    raw_content: str
+    title: str
+    author: str
+    content_hash: str
 
 
 def _extract_title(text: str) -> str:
@@ -76,6 +100,7 @@ def chunk_document(file_path: Path, settings: Settings) -> list[Document]:
         # Build contextual header path
         header_parts = [meta[h] for h in ("h1", "h2", "h3") if meta.get(h)]
         header_path = " > ".join(header_parts)
+        meta["header_path"] = header_path or None
         prefix = f"{header_path}\n\n" if header_path else ""
 
         body = chunk.page_content
@@ -94,68 +119,116 @@ def chunk_document(file_path: Path, settings: Settings) -> list[Document]:
     return final_chunks
 
 
-def ingest_resources(settings: Settings):
-    from chromadb import PersistentClient
-    from langchain_chroma import Chroma
+def _hash_text(content: str) -> str:
+    return sha256(content.encode("utf-8")).hexdigest()
 
-    from health_agent.rag.retriever import clear_bm25_cache
 
+def _resource_record(file_path: Path, resource_path: Path) -> ResourceFileRecord:
+    raw_content = file_path.read_text(encoding="utf-8")
+    return ResourceFileRecord(
+        file_path=file_path,
+        source_path=str(file_path.relative_to(resource_path)),
+        source_name=file_path.name,
+        raw_content=raw_content,
+        title=_extract_title(raw_content),
+        author=_extract_author(raw_content, file_path.name),
+        content_hash=_hash_text(raw_content),
+    )
+
+
+def _embed_texts(texts: list[str], settings: Settings, batch_size: int = 128) -> list[list[float]]:
+    if settings.embedding_dimensions != EMBEDDING_DIMENSIONS:
+        raise RuntimeError(
+            "EMBEDDING_DIMENSIONS does not match the current database schema. "
+            "Expected 3072 for text-embedding-3-large."
+        )
+
+    embeddings_model = get_embeddings_model(settings)
+    vectors: list[list[float]] = []
+    for start in range(0, len(texts), batch_size):
+        vectors.extend(embeddings_model.embed_documents(texts[start : start + batch_size]))
+    return vectors
+
+
+def ingest_resources(settings: Settings) -> IngestStats:
     resource_path = settings.resources_dir
-    files = list(resource_path.glob("**/*.txt")) + list(resource_path.glob("**/*.md"))
+    files = resource_files(resource_path)
+    records = [_resource_record(file_path, resource_path) for file_path in files]
+    desired_manifest = filesystem_resource_manifest(resource_path)
 
-    if not files:
-        print("No .txt or .md files found in resources directory.")
-        return None
+    session_factory = get_session_factory(settings)
+    stats = IngestStats()
 
-    chunks: list[Document] = []
-    for f in files:
-        chunks.extend(chunk_document(f, settings))
+    with session_factory() as session, session.begin():
+        existing_resources = {
+            resource.source_path: resource
+            for resource in session.execute(select(AgentResource)).scalars()
+        }
 
-    embeddings = OpenAIEmbeddings(
-        model=settings.embedding_model,
-        api_key=settings.openai_api_key,
-    )
+        missing_paths = sorted(set(existing_resources) - set(desired_manifest))
+        if missing_paths:
+            delete_result = session.execute(
+                delete(AgentResource).where(AgentResource.source_path.in_(missing_paths))
+            )
+            stats.deleted_resources = delete_result.rowcount or len(missing_paths)
 
-    persist_dir = settings.chroma_persist_dir
-    staging_dir = persist_dir.with_name(persist_dir.name + "_staging")
+        for record in records:
+            current = existing_resources.get(record.source_path)
+            if current is not None and current.content_hash == record.content_hash:
+                continue
 
-    # Clean up any leftover staging dir from a prior failed attempt
-    if staging_dir.exists():
-        shutil.rmtree(staging_dir)
+            now = utc_now()
+            if current is None:
+                current = AgentResource(
+                    source_path=record.source_path,
+                    source_name=record.source_name,
+                    title=record.title,
+                    author=record.author,
+                    raw_content=record.raw_content,
+                    content_hash=record.content_hash,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(current)
+                session.flush()
+                stats.added_resources += 1
+            else:
+                current.source_name = record.source_name
+                current.title = record.title
+                current.author = record.author
+                current.raw_content = record.raw_content
+                current.content_hash = record.content_hash
+                current.updated_at = now
+                session.execute(
+                    delete(AgentResourceChunk).where(AgentResourceChunk.resource_id == current.id)
+                )
+                stats.updated_resources += 1
 
-    # Build the new index in a staging directory
-    client = PersistentClient(path=str(staging_dir))
-    vectorstore = Chroma(
-        collection_name="health_docs",
-        embedding_function=embeddings,
-        client=client,
-    )
-    # ChromaDB has a max batch size of 5461; add in batches
-    batch_size = 5000
-    for i in range(0, len(chunks), batch_size):
-        vectorstore.add_documents(chunks[i : i + batch_size])
-    del vectorstore  # drop reference so client refcount can reach zero
-    client.close()  # release SQLite handles before directory swap
+            chunks = chunk_document(record.file_path, settings)
+            embeddings = _embed_texts([chunk.page_content for chunk in chunks], settings)
+            chunk_rows = []
+            for index, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+                chunk_rows.append(
+                    AgentResourceChunk(
+                        resource_id=current.id,
+                        chunk_index=index,
+                        source_path=record.source_path,
+                        source=record.source_name,
+                        title=chunk.metadata["title"],
+                        author=chunk.metadata["author"],
+                        h1=chunk.metadata.get("h1"),
+                        h2=chunk.metadata.get("h2"),
+                        h3=chunk.metadata.get("h3"),
+                        header_path=chunk.metadata.get("header_path"),
+                        content=chunk.page_content,
+                        content_hash=_hash_text(chunk.page_content),
+                        embedding=embedding,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
 
-    # Atomic swap: live index is untouched until this point
-    backup_dir = persist_dir.with_name(persist_dir.name + "_old")
-    if backup_dir.exists():
-        shutil.rmtree(backup_dir)
-    if persist_dir.exists():
-        persist_dir.rename(backup_dir)
-    staging_dir.rename(persist_dir)
-    if backup_dir.exists():
-        shutil.rmtree(backup_dir)
+            session.add_all(chunk_rows)
+            stats.chunk_rows_written += len(chunk_rows)
 
-    clear_bm25_cache()
-
-    # Re-open from the final location so the caller gets a usable store
-    live_client = PersistentClient(path=str(persist_dir))
-    vectorstore = Chroma(
-        collection_name="health_docs",
-        embedding_function=embeddings,
-        client=live_client,
-    )
-
-    print(f"Ingested {len(files)} file(s) into {len(chunks)} chunks.")
-    return vectorstore
+    return stats

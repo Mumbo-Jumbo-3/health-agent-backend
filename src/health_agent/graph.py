@@ -14,7 +14,7 @@ from health_agent.models import (
     get_trusted_grok_model,
     get_unrestricted_grok_model,
 )
-from health_agent.rag.retriever import get_bm25_retriever, get_vectorstore, rerank_documents
+from health_agent.rag.retriever import query_keyword_chunks, query_vector_chunks, rerank_documents
 from health_agent.state import AgentState
 
 
@@ -120,21 +120,13 @@ def _run_search_retrieval(
     if not queries:
         return []
 
-    vectorstore = get_vectorstore(settings)
-    bm25_retriever = get_bm25_retriever(settings)
-
     result_lists: list[list[Document]] = []
     weights: list[float] = []
     query_weight_divisor = max(len(queries), 1)
 
     for query in queries:
-        vector_results = vectorstore.max_marginal_relevance_search(
-            query,
-            k=settings.retrieval_k,
-            fetch_k=settings.retrieval_fetch_k,
-            lambda_mult=0.7,
-        )
-        bm25_results = bm25_retriever.invoke(query)
+        vector_results = query_vector_chunks(query, settings)
+        bm25_results = query_keyword_chunks(query, settings)
 
         result_lists.extend([vector_results, bm25_results])
         weights.extend([

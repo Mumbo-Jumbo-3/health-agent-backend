@@ -1,61 +1,157 @@
-import json
-import time
-from pathlib import Path
+import math
 
 from langchain_core.documents import Document
+from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from health_agent.config import Settings
+from health_agent.db import AgentResource, AgentResourceChunk, get_session_factory
+from health_agent.db.models import EMBEDDING_DIMENSIONS
 from health_agent.models import get_embeddings_model
+from health_agent.rag.resources import filesystem_resource_manifest
 
-_bm25_cache: dict[str, object] = {}
 _reranker_cache: object | None = None
 
 
-def get_vectorstore(settings: Settings):
-    from chromadb import PersistentClient
-    from langchain_chroma import Chroma
-
-    client = PersistentClient(path=str(settings.chroma_persist_dir))
-    return Chroma(
-        collection_name="health_docs",
-        embedding_function=get_embeddings_model(settings),
-        client=client,
-    )
+def _database_resource_manifest(settings: Settings) -> dict[str, str]:
+    session_factory = get_session_factory(settings)
+    with session_factory() as session:
+        rows = session.execute(select(AgentResource.source_path, AgentResource.content_hash)).all()
+    return {source_path: content_hash for source_path, content_hash in rows}
 
 
-def _ingest_timestamp(settings: Settings) -> float:
-    """Read the last-ingest timestamp, or 0 if none exists."""
-    timestamp_file = settings.chroma_persist_dir / ".last_ingest"
-    if timestamp_file.exists():
-        return json.loads(timestamp_file.read_text())["timestamp"]
-    return 0.0
+def _chunk_to_document(chunk: AgentResourceChunk) -> Document:
+    metadata = {
+        "source": chunk.source,
+        "source_path": chunk.source_path,
+        "title": chunk.title,
+        "author": chunk.author,
+        "header_path": chunk.header_path,
+    }
+    for key in ("h1", "h2", "h3"):
+        value = getattr(chunk, key)
+        if value:
+            metadata[key] = value
+    return Document(page_content=chunk.content, metadata=metadata)
 
 
-def get_bm25_retriever(settings: Settings):
-    from langchain_community.retrievers import BM25Retriever
+def _cosine_similarity(left: list[float], right: list[float]) -> float:
+    numerator = sum(a * b for a, b in zip(left, right))
+    left_norm = math.sqrt(sum(a * a for a in left))
+    right_norm = math.sqrt(sum(b * b for b in right))
+    denominator = left_norm * right_norm
+    if denominator == 0:
+        return 0.0
+    return numerator / denominator
 
-    # Key on persist dir + ingest timestamp so the cache self-invalidates
-    # whenever the index is rebuilt — no manual clearing needed.
-    cache_key = f"{settings.chroma_persist_dir}@{_ingest_timestamp(settings)}"
-    if cache_key in _bm25_cache:
-        return _bm25_cache[cache_key]
 
-    # Evict stale entries for this persist dir
-    prefix = f"{settings.chroma_persist_dir}@"
-    for k in [k for k in _bm25_cache if k.startswith(prefix)]:
-        del _bm25_cache[k]
+def _maximal_marginal_relevance(
+    query_embedding: list[float],
+    candidate_embeddings: list[list[float]],
+    lambda_mult: float,
+    k: int,
+) -> list[int]:
+    if not candidate_embeddings or k <= 0:
+        return []
 
-    vectorstore = get_vectorstore(settings)
-    all_data = vectorstore.get(include=["documents", "metadatas"])
-
-    docs = [
-        Document(page_content=text, metadata=meta)
-        for text, meta in zip(all_data["documents"], all_data["metadatas"])
+    query_similarities = [
+        _cosine_similarity(query_embedding, candidate_embedding)
+        for candidate_embedding in candidate_embeddings
     ]
+    selected = [max(range(len(candidate_embeddings)), key=query_similarities.__getitem__)]
+    remaining = set(range(len(candidate_embeddings))) - set(selected)
 
-    retriever = BM25Retriever.from_documents(docs, k=settings.bm25_k)
-    _bm25_cache[cache_key] = retriever
-    return retriever
+    while remaining and len(selected) < min(k, len(candidate_embeddings)):
+        best_index = None
+        best_score = float("-inf")
+        for candidate_index in remaining:
+            diversity_penalty = max(
+                _cosine_similarity(
+                    candidate_embeddings[candidate_index],
+                    candidate_embeddings[selected_index],
+                )
+                for selected_index in selected
+            )
+            mmr_score = (
+                lambda_mult * query_similarities[candidate_index]
+                - (1 - lambda_mult) * diversity_penalty
+            )
+            if mmr_score > best_score:
+                best_score = mmr_score
+                best_index = candidate_index
+
+        if best_index is None:
+            break
+        selected.append(best_index)
+        remaining.remove(best_index)
+
+    return selected
+
+
+def query_vector_chunks(query: str, settings: Settings) -> list[Document]:
+    if not settings.database_url.strip():
+        raise RuntimeError("DATABASE_URL must be set for vector retrieval.")
+    if settings.embedding_dimensions != EMBEDDING_DIMENSIONS:
+        raise RuntimeError(
+            "EMBEDDING_DIMENSIONS does not match the current database schema. "
+            "Expected 3072 for text-embedding-3-large."
+        )
+
+    query_embedding = get_embeddings_model(settings).embed_query(query)
+    distance = AgentResourceChunk.embedding.cosine_distance(query_embedding).label("distance")
+    session_factory = get_session_factory(settings)
+    with session_factory() as session:
+        rows = session.execute(
+            select(AgentResourceChunk, distance)
+            .order_by(distance.asc(), AgentResourceChunk.chunk_index.asc())
+            .limit(settings.retrieval_fetch_k)
+        ).all()
+
+    if not rows:
+        return []
+
+    candidate_chunks = [row[0] for row in rows]
+    candidate_embeddings = [list(chunk.embedding) for chunk in candidate_chunks]
+    selected_indices = _maximal_marginal_relevance(
+        query_embedding=query_embedding,
+        candidate_embeddings=candidate_embeddings,
+        lambda_mult=0.7,
+        k=settings.retrieval_k,
+    )
+    return [_chunk_to_document(candidate_chunks[index]) for index in selected_indices]
+
+
+def _weighted_tsvector():
+    title_vector = func.setweight(func.to_tsvector("english", func.coalesce(AgentResourceChunk.title, "")), "A")
+    header_vector = func.setweight(
+        func.to_tsvector("english", func.coalesce(AgentResourceChunk.header_path, "")),
+        "B",
+    )
+    content_vector = func.setweight(
+        func.to_tsvector("english", func.coalesce(AgentResourceChunk.content, "")),
+        "C",
+    )
+    return title_vector.op("||")(header_vector).op("||")(content_vector)
+
+
+def query_keyword_chunks(query: str, settings: Settings) -> list[Document]:
+    if not settings.database_url.strip():
+        raise RuntimeError("DATABASE_URL must be set for keyword retrieval.")
+
+    weighted_tsvector = _weighted_tsvector()
+    tsquery = func.websearch_to_tsquery("english", query)
+    rank = func.ts_rank_cd(weighted_tsvector, tsquery).label("rank")
+
+    session_factory = get_session_factory(settings)
+    with session_factory() as session:
+        rows = session.execute(
+            select(AgentResourceChunk, rank)
+            .where(weighted_tsvector.op("@@")(tsquery))
+            .order_by(rank.desc(), AgentResourceChunk.chunk_index.asc())
+            .limit(settings.bm25_k)
+        ).all()
+
+    return [_chunk_to_document(row[0]) for row in rows]
 
 
 def rerank_documents(
@@ -81,41 +177,14 @@ def rerank_documents(
     ]
 
 
-def clear_bm25_cache() -> None:
-    _bm25_cache.clear()
-
-
 def needs_reindex(settings: Settings) -> bool:
-    timestamp_file = settings.chroma_persist_dir / ".last_ingest"
-    if not timestamp_file.exists():
+    if not settings.database_url.strip():
         return True
 
-    last_ingest = json.loads(timestamp_file.read_text())
-
-    resource_path = settings.resources_dir
-    files = list(resource_path.glob("**/*.txt")) + list(resource_path.glob("**/*.md"))
-
-    current_files = sorted(str(f.relative_to(resource_path)) for f in files)
-    stored_files = last_ingest.get("files", [])
-
-    # Detect additions, deletions, and renames
-    if current_files != stored_files:
+    current_manifest = filesystem_resource_manifest(settings.resources_dir)
+    try:
+        stored_manifest = _database_resource_manifest(settings)
+    except SQLAlchemyError:
         return True
 
-    if not files:
-        return False
-
-    latest_mtime = max(f.stat().st_mtime for f in files)
-    return latest_mtime > last_ingest["timestamp"]
-
-
-def mark_indexed(settings: Settings) -> None:
-    resource_path = settings.resources_dir
-    files = list(resource_path.glob("**/*.txt")) + list(resource_path.glob("**/*.md"))
-
-    settings.chroma_persist_dir.mkdir(parents=True, exist_ok=True)
-    timestamp_file = settings.chroma_persist_dir / ".last_ingest"
-    timestamp_file.write_text(json.dumps({
-        "timestamp": time.time(),
-        "files": sorted(str(f.relative_to(resource_path)) for f in files),
-    }))
+    return current_manifest != stored_manifest

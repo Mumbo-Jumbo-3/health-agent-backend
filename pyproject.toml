@@ -10,15 +10,16 @@ dependencies = [
     "langchain-anthropic>=1.4",
     "langchain-xai>=1.2",
     "langchain-text-splitters>=1.1",
-    "chromadb>=1.5",
     "pydantic-settings>=2.13",
     "typer>=0.24",
-    "langchain-chroma>=1.1",
     "langgraph-cli[inmem]>=0.4",
     "langsmith>=0.7.19",
-    "rank-bm25>=0.2.2",
     "langchain-community>=0.4.1",
     "flashrank>=0.2.10",
+    "sqlalchemy>=2.0.41",
+    "alembic>=1.16.4",
+    "psycopg[binary]>=3.2.9",
+    "pgvector>=0.4.1",
 ]
 
 [project.scripts]

@@ -11,17 +11,24 @@ def ingest(
 ):
     """Ingest wellness resources from the resources directory."""
     from health_agent.rag.ingest import ingest_resources
-    from health_agent.rag.retriever import mark_indexed, needs_reindex
+    from health_agent.rag.retriever import needs_reindex
 
     settings = get_settings()
+    if not settings.database_url.strip():
+        raise typer.BadParameter("DATABASE_URL must be set before running ingest.")
 
     if not force and not needs_reindex(settings):
         print("Index is up to date — skipping ingestion. Use --force to rebuild.")
         return
 
     result = ingest_resources(settings)
-    if result is not None:
-        mark_indexed(settings)
+    print(
+        "Ingest complete: "
+        f"{result.added_resources} added, "
+        f"{result.updated_resources} updated, "
+        f"{result.deleted_resources} deleted, "
+        f"{result.chunk_rows_written} chunks written."
+    )
 
 
 @app.command()
@@ -30,16 +37,20 @@ def chat():
     from langchain_core.messages import HumanMessage
 
     from health_agent.graph import build_graph
-    from health_agent.rag.ingest import ingest_resources
-    from health_agent.rag.retriever import mark_indexed, needs_reindex
+    from health_agent.rag.retriever import needs_reindex
 
     settings = get_settings()
 
-    if needs_reindex(settings):
-        print("Indexing resources...")
-        result = ingest_resources(settings)
-        if result is not None:
-            mark_indexed(settings)
+    if not settings.database_url.strip():
+        print(
+            "DATABASE_URL is not configured. RAG retrieval will be unavailable until Postgres "
+            "is configured and ingested.\n"
+        )
+    elif needs_reindex(settings):
+        print(
+            "RAG index is missing or stale. Run `health-agent ingest` to rebuild it. "
+            "Continuing without automatic ingestion.\n"
+        )
 
     graph = build_graph(settings)
     messages = []

@@ -9,12 +9,14 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     xai_api_key: str = ""
+    database_url: str = ""
 
     trusted_xai_model: str = "grok-4-1-fast-reasoning"
     unrestricted_xai_model: str = "grok-4-1-fast-reasoning"
     anthropic_synthesis_model: str = "claude-sonnet-4-20250514"
 
     embedding_model: str = "text-embedding-3-large"
+    embedding_dimensions: int = 3072
 
     reranker_model: str = "ms-marco-MiniLM-L-12-v2"
     reranker_top_k: int = 8
@@ -35,7 +37,6 @@ class Settings(BaseSettings):
     ]
 
     resources_dir: Path = Path("resources")
-    chroma_persist_dir: Path = Path(".chroma_db")
     chunk_size: int = 1000
     chunk_overlap: int = 200
 

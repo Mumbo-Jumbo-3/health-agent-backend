@@ -311,12 +311,9 @@ def test_graph_invokes_claude_even_if_trusted_search_fails():
     )
 
     with (
-        patch("health_agent.graph.get_vectorstore") as mock_vectorstore,
-        patch("health_agent.graph.get_bm25_retriever") as mock_bm25,
+        patch("health_agent.graph._run_search_retrieval", return_value=[]),
         patch("health_agent.graph.rerank_documents", side_effect=lambda query, docs, settings: docs),
     ):
-        mock_vectorstore.return_value.max_marginal_relevance_search.return_value = []
-        mock_bm25.return_value.invoke.return_value = []
         result = graph.invoke({"messages": [HumanMessage(content="benefits of magnesium")]})
 
     assert result["messages"][-1].content == "final answer"

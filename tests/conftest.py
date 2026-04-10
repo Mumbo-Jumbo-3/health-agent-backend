@@ -45,7 +45,7 @@ def tmp_resources(tmp_path: Path) -> Path:
 def test_settings(tmp_path: Path, tmp_resources: Path) -> Settings:
     return Settings(
         resources_dir=tmp_resources,
-        chroma_persist_dir=tmp_path / ".chroma_db",
+        database_url="postgresql://postgres:postgres@localhost:5432/test_health_agent",
         openai_api_key="test-key",
         chunk_size=200,
         chunk_overlap=50,
