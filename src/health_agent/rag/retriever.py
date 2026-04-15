@@ -1,7 +1,7 @@
 import math
 
 from langchain_core.documents import Document
-from sqlalchemy import CHAR, func, literal, select
+from sqlalchemy import func, literal_column, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from health_agent.config import Settings
@@ -124,15 +124,15 @@ def query_vector_chunks(query: str, settings: Settings) -> list[Document]:
 def _weighted_tsvector():
     title_vector = func.setweight(
         func.to_tsvector("english", func.coalesce(AgentResourceChunk.title, "")),
-        literal("A").cast(CHAR),
+        literal_column("'A'::\"char\""),
     )
     header_vector = func.setweight(
         func.to_tsvector("english", func.coalesce(AgentResourceChunk.header_path, "")),
-        literal("B").cast(CHAR),
+        literal_column("'B'::\"char\""),
     )
     content_vector = func.setweight(
         func.to_tsvector("english", func.coalesce(AgentResourceChunk.content, "")),
-        literal("C").cast(CHAR),
+        literal_column("'C'::\"char\""),
     )
     return title_vector.op("||")(header_vector).op("||")(content_vector)
 
