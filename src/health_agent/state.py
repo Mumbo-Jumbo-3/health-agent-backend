@@ -19,3 +19,4 @@ class AgentState(TypedDict):
     merged_rag_docs: list[Document]
     rag_status: str
     rag_context: str
+    sufficient: bool

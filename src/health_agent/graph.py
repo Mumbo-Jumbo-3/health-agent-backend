@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from health_agent.config import Settings
 from health_agent.models import (
+    get_claude_judge_model,
     get_claude_synthesis_model,
     get_trusted_grok_model,
     get_unrestricted_grok_model,
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 STATUS_SUCCESS = "success"
 STATUS_EMPTY = "empty"
 STATUS_ERROR = "error"
+STATUS_SKIPPED = "skipped"
 
 NO_RAG_RESULTS = "No relevant documents found."
 
@@ -152,6 +154,7 @@ def build_graph(settings: Settings):
     trusted_grok = get_trusted_grok_model(settings)
     unrestricted_grok = get_unrestricted_grok_model(settings)
     claude = get_claude_synthesis_model(settings)
+    judge = get_claude_judge_model(settings)
     accounts = ", ".join(f"@{a}" for a in settings.trusted_x_accounts)
 
     trusted_search_system = f"""You are a knowledgeable health and wellness assistant.
@@ -173,18 +176,35 @@ Return ONLY a JSON object with:
 Do not include any text outside the JSON object."""
 
     synthesis_system = """You are a knowledgeable health and wellness assistant.
-You will receive evidence from three channels:
+You will receive evidence from up to three channels:
 1. A RAG system trained on the entirety of Dr. Ray Peat's work
 2. Trusted X accounts
-3. Unrestricted X Search
+3. Unrestricted X Search (may be absent)
 
 Write a comprehensive, practical response that prioritizes those sources in that order.
 If evidence conflicts, prefer the higher-priority source and briefly explain the conflict.
 If a channel is empty or failed, briefly note that its evidence was limited or unavailable.
+If unrestricted X search was not consulted, do not mention it at all.
 Keep the response integrated rather than source-separated, but include a brief hierarchy note
 that the Ray Peat RAG corpus and trusted accounts were weighted above broader X findings.
 
 Disclaimers are provided elsewhere. Do not mention filenames or internal implementation details."""
+
+    judge_system = """You are evaluating whether the provided evidence adequately answers
+the user's health question.
+
+Given:
+- The user's question
+- Retrieved RAG documents from Dr. Ray Peat's corpus
+- Analysis from trusted X accounts
+
+Return ONLY a JSON object with:
+- "sufficient": boolean — true if the evidence is specific, on-topic, and comprehensive
+  enough to form a practical answer; false if key aspects of the question are uncovered,
+  evidence is thin, or sources conflict in ways that need external corroboration.
+- "reason": a short sentence (for logs only; not shown to users).
+
+Do not include any text outside the JSON object."""
 
     def trusted_grok_search(state: AgentState):
         last_message = state["messages"][-1]
@@ -327,24 +347,78 @@ Disclaimers are provided elsewhere. Do not mention filenames or internal impleme
                 "rag_context": NO_RAG_RESULTS,
             }
 
-    def claude_synthesize(state: AgentState):
-        original_question = str(state["messages"][-1].content)
-        user_content = (
-            f"## User Question\n{original_question}\n\n"
-            "## Evidence Priority\n"
-            "1. RAG system trained on the entirety of Dr. Ray Peat's work\n"
-            "2. Trusted X accounts\n"
-            "3. Unrestricted X Search\n\n"
-            "## Branch Status\n"
-            f"- Trusted X Search: {state['trusted_search_status']}\n"
-            f"- Unrestricted X Search: {state['unrestricted_search_status']}\n"
-            f"- Base RAG: {state['base_rag_status']}\n"
-            f"- Enriched RAG: {state['enrich_rag_status']}\n"
-            f"- RAG Aggregate: {state['rag_status']}\n\n"
+    def sufficiency_gate(state: AgentState):
+        rag_errored = (
+            state["base_rag_status"] == STATUS_ERROR
+            and state["enrich_rag_status"] == STATUS_ERROR
+        )
+        if state["trusted_search_status"] == STATUS_ERROR or rag_errored:
+            logger.info("Sufficiency gate: upstream ERROR, routing to unrestricted Grok")
+            return {"sufficient": False}
+
+        user_question = str(state["messages"][-1].content)
+        judge_user = (
+            f"## User Question\n{user_question}\n\n"
             f"## Trusted X Analysis\n{state['trusted_search_response']}\n\n"
-            f"## Unrestricted X Analysis\n{state['unrestricted_search_response']}\n\n"
             f"## Retrieved Documents\n{state['rag_context']}"
         )
+        try:
+            raw = judge.invoke(
+                [SystemMessage(content=judge_system), HumanMessage(content=judge_user)]
+            )
+            parsed = _parse_json_content(_extract_raw_content(raw))
+            sufficient = bool(parsed.get("sufficient", False))
+            logger.info(
+                "Sufficiency judge decided sufficient=%s reason=%s",
+                sufficient,
+                parsed.get("reason", ""),
+            )
+        except Exception:
+            logger.exception("Sufficiency judge failed; defaulting to insufficient")
+            sufficient = False
+
+        if sufficient:
+            return {
+                "sufficient": True,
+                "unrestricted_search_response": "",
+                "unrestricted_search_status": STATUS_SKIPPED,
+            }
+        return {"sufficient": False}
+
+    def route_from_gate(state: AgentState) -> str:
+        return "unrestricted_grok_search" if not state["sufficient"] else "claude_synthesize"
+
+    def claude_synthesize(state: AgentState):
+        original_question = str(state["messages"][-1].content)
+        unrestricted_status = state["unrestricted_search_status"]
+        skipped = unrestricted_status == STATUS_SKIPPED
+
+        sections = [
+            f"## User Question\n{original_question}",
+            "## Evidence Priority\n"
+            "1. RAG system trained on the entirety of Dr. Ray Peat's work\n"
+            "2. Trusted X accounts"
+            + ("" if skipped else "\n3. Unrestricted X Search"),
+        ]
+
+        status_lines = [
+            f"- Trusted X Search: {state['trusted_search_status']}",
+            f"- Base RAG: {state['base_rag_status']}",
+            f"- Enriched RAG: {state['enrich_rag_status']}",
+            f"- RAG Aggregate: {state['rag_status']}",
+        ]
+        if not skipped:
+            status_lines.insert(1, f"- Unrestricted X Search: {unrestricted_status}")
+        sections.append("## Branch Status\n" + "\n".join(status_lines))
+
+        sections.append(f"## Trusted X Analysis\n{state['trusted_search_response']}")
+        if not skipped:
+            sections.append(
+                f"## Unrestricted X Analysis\n{state['unrestricted_search_response']}"
+            )
+        sections.append(f"## Retrieved Documents\n{state['rag_context']}")
+
+        user_content = "\n\n".join(sections)
 
         messages = [
             SystemMessage(content=synthesis_system),
@@ -361,20 +435,26 @@ Disclaimers are provided elsewhere. Do not mention filenames or internal impleme
     graph.add_node("rag_retrieve_base", rag_retrieve_base)
     graph.add_node("rag_retrieve_enrich", rag_retrieve_enrich)
     graph.add_node("rag_merge", rag_merge)
+    graph.add_node("sufficiency_gate", sufficiency_gate)
     graph.add_node("claude_synthesize", claude_synthesize)
 
     graph.add_edge(START, "trusted_grok_search")
-    graph.add_edge(START, "unrestricted_grok_search")
     graph.add_edge(START, "rag_retrieve_base")
 
     graph.add_edge("trusted_grok_search", "rag_retrieve_enrich")
     graph.add_edge(["rag_retrieve_base", "rag_retrieve_enrich"], "rag_merge")
 
-    graph.add_edge(
-        ["trusted_grok_search", "unrestricted_grok_search", "rag_merge"],
-        "claude_synthesize",
-    )
+    graph.add_edge(["trusted_grok_search", "rag_merge"], "sufficiency_gate")
 
+    graph.add_conditional_edges(
+        "sufficiency_gate",
+        route_from_gate,
+        {
+            "unrestricted_grok_search": "unrestricted_grok_search",
+            "claude_synthesize": "claude_synthesize",
+        },
+    )
+    graph.add_edge("unrestricted_grok_search", "claude_synthesize")
     graph.add_edge("claude_synthesize", END)
 
     return graph.compile()

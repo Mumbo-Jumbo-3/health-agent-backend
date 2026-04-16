@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     trusted_xai_model: str = "grok-4-1-fast-reasoning"
     unrestricted_xai_model: str = "grok-4-1-fast-reasoning"
     anthropic_synthesis_model: str = "claude-sonnet-4-20250514"
+    anthropic_judge_model: str = "claude-sonnet-4-20250514"
 
     embedding_model: str = "text-embedding-3-large"
     embedding_dimensions: int = 3072

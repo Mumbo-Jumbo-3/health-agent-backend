@@ -26,6 +26,13 @@ def get_claude_synthesis_model(settings: Settings) -> ChatAnthropic:
     )
 
 
+def get_claude_judge_model(settings: Settings) -> ChatAnthropic:
+    return ChatAnthropic(
+        model=settings.anthropic_judge_model,
+        api_key=settings.anthropic_api_key,
+    )
+
+
 def get_embeddings_model(settings: Settings) -> OpenAIEmbeddings:
     return OpenAIEmbeddings(
         model=settings.embedding_model,
