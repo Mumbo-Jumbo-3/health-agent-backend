@@ -1,5 +1,5 @@
 from langchain_anthropic import ChatAnthropic
-from langchain_openai import OpenAIEmbeddings
+from langchain_voyageai import VoyageAIEmbeddings
 from langchain_xai import ChatXAI
 
 from health_agent.config import Settings
@@ -33,8 +33,8 @@ def get_claude_judge_model(settings: Settings) -> ChatAnthropic:
     )
 
 
-def get_embeddings_model(settings: Settings) -> OpenAIEmbeddings:
-    return OpenAIEmbeddings(
+def get_embeddings_model(settings: Settings) -> VoyageAIEmbeddings:
+    return VoyageAIEmbeddings(
         model=settings.embedding_model,
-        api_key=settings.openai_api_key,
+        voyage_api_key=settings.voyage_api_key,
     )

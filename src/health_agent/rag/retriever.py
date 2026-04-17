@@ -1,5 +1,6 @@
 import math
 
+import voyageai
 from langchain_core.documents import Document
 from sqlalchemy import func, literal_column, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -10,7 +11,7 @@ from health_agent.db.models import EMBEDDING_DIMENSIONS
 from health_agent.models import get_embeddings_model
 from health_agent.rag.resources import filesystem_resource_manifest
 
-_reranker_cache: object | None = None
+_voyage_client_cache: voyageai.Client | None = None
 
 
 def _database_resource_manifest(settings: Settings) -> dict[str, str]:
@@ -94,7 +95,7 @@ def query_vector_chunks(query: str, settings: Settings) -> list[Document]:
     if settings.embedding_dimensions != EMBEDDING_DIMENSIONS:
         raise RuntimeError(
             "EMBEDDING_DIMENSIONS does not match the current database schema. "
-            "Expected 3072 for text-embedding-3-large."
+            "Expected 1024 for voyage-3-large."
         )
 
     query_embedding = get_embeddings_model(settings).embed_query(query)
@@ -163,21 +164,24 @@ def rerank_documents(
     if not docs:
         return docs
 
-    global _reranker_cache
-    if _reranker_cache is None:
-        from langchain_community.document_compressors import FlashrankRerank
+    global _voyage_client_cache
+    if _voyage_client_cache is None:
+        _voyage_client_cache = voyageai.Client(api_key=settings.voyage_api_key)
 
-        _reranker_cache = FlashrankRerank(
-            model=settings.reranker_model,
-            top_n=settings.reranker_top_k,
-        )
+    result = _voyage_client_cache.rerank(
+        query=query,
+        documents=[doc.page_content for doc in docs],
+        model=settings.reranker_model,
+        top_k=settings.reranker_top_k,
+    )
 
-    reranked = list(_reranker_cache.compress_documents(docs, query))
-    return [
-        doc
-        for doc in reranked
-        if doc.metadata.get("relevance_score", 0) >= settings.reranker_score_threshold
-    ]
+    reranked: list[Document] = []
+    for item in result.results:
+        if item.relevance_score >= settings.reranker_score_threshold:
+            doc = docs[item.index]
+            doc.metadata["relevance_score"] = item.relevance_score
+            reranked.append(doc)
+    return reranked
 
 
 def needs_reindex(settings: Settings) -> bool:

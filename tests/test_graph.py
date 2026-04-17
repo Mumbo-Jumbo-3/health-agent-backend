@@ -51,7 +51,7 @@ def _make_claude_model(captured=None):
 
 def _build_graph(*, trusted=None, unrestricted=None, claude=None):
     settings = Settings(
-        openai_api_key="test-openai-key",
+        voyage_api_key="test-voyage-key",
         anthropic_api_key="test-anthropic-key",
         xai_api_key="test-xai-key",
     )

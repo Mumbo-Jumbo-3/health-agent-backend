@@ -46,7 +46,7 @@ def test_settings(tmp_path: Path, tmp_resources: Path) -> Settings:
     return Settings(
         resources_dir=tmp_resources,
         database_url="postgresql://postgres:postgres@localhost:5432/test_health_agent",
-        openai_api_key="test-key",
+        voyage_api_key="test-key",
         chunk_size=200,
         chunk_overlap=50,
     )

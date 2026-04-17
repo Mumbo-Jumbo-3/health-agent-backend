@@ -6,7 +6,6 @@ requires-python = ">=3.11"
 dependencies = [
     "langgraph==1.1.6",
     "langchain>=1.2",
-    "langchain-openai>=1.1",
     "langchain-anthropic>=1.4",
     "langchain-xai>=1.2",
     "langchain-text-splitters>=1.1",
@@ -16,11 +15,12 @@ dependencies = [
     "langgraph-api==0.7.99",
     "langsmith==0.7.30",
     "langchain-community>=0.4.1",
-    "flashrank>=0.2.10",
     "sqlalchemy>=2.0.41",
     "alembic>=1.16.4",
     "psycopg[binary]>=3.2.9",
     "pgvector>=0.4.1",
+    "langchain-voyageai>=0.3.3",
+    "voyageai>=0.3.7",
 ]
 
 [project.scripts]

@@ -32,8 +32,8 @@ def test_claude_synthesis_model():
 
 
 def test_embeddings_model():
-    settings = Settings(openai_api_key="test-key")
+    settings = Settings(voyage_api_key="test-key")
     model = get_embeddings_model(settings)
-    from langchain_openai import OpenAIEmbeddings
+    from langchain_voyageai import VoyageAIEmbeddings
 
-    assert isinstance(model, OpenAIEmbeddings)
+    assert isinstance(model, VoyageAIEmbeddings)

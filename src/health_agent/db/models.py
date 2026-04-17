@@ -6,7 +6,7 @@ from sqlalchemy import DateTime, ForeignKey, Integer, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
-EMBEDDING_DIMENSIONS = 3072
+EMBEDDING_DIMENSIONS = 1024
 
 
 def utc_now() -> datetime:

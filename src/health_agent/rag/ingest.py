@@ -140,7 +140,7 @@ def _embed_texts(texts: list[str], settings: Settings, batch_size: int = 128) ->
     if settings.embedding_dimensions != EMBEDDING_DIMENSIONS:
         raise RuntimeError(
             "EMBEDDING_DIMENSIONS does not match the current database schema. "
-            "Expected 3072 for text-embedding-3-large."
+            "Expected 1024 for voyage-3-large."
         )
 
     embeddings_model = get_embeddings_model(settings)
