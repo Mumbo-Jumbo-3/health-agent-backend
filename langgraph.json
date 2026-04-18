@@ -3,5 +3,8 @@
   "graphs": {
     "agent": "./src/health_agent/agent.py:graph"
   },
+  "http": {
+    "app": "./src/health_agent/http_app.py:app"
+  },
   "env": ".env"
 }

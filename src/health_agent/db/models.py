@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Integer, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -70,3 +70,16 @@ class AgentResourceChunk(Base):
     )
 
     resource: Mapped[AgentResource] = relationship(back_populates="chunks")
+
+
+class SharedConversation(Base):
+    __tablename__ = "shared_conversations"
+    __table_args__ = (Index("ix_shared_conversations_thread_id", "thread_id"),)
+
+    share_id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    thread_id: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    first_message: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
