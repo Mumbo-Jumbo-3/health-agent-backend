@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     anthropic_synthesis_model: str = "claude-sonnet-4-20250514"
     anthropic_judge_model: str = "claude-sonnet-4-20250514"
 
-    embedding_model: str = "voyage-3-large"
+    embedding_model: str = "voyage-3.5"
     embedding_dimensions: int = 1024
 
     reranker_model: str = "rerank-2.5"

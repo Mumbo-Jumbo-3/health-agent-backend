@@ -21,7 +21,7 @@ def ingest(
         print("Index is up to date — skipping ingestion. Use --force to rebuild.")
         return
 
-    result = ingest_resources(settings)
+    result = ingest_resources(settings, force=force)
     print(
         "Ingest complete: "
         f"{result.added_resources} added, "

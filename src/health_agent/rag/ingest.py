@@ -140,7 +140,7 @@ def _embed_texts(texts: list[str], settings: Settings, batch_size: int = 128) ->
     if settings.embedding_dimensions != EMBEDDING_DIMENSIONS:
         raise RuntimeError(
             "EMBEDDING_DIMENSIONS does not match the current database schema. "
-            "Expected 1024 for voyage-3-large."
+            f"Expected {EMBEDDING_DIMENSIONS}."
         )
 
     embeddings_model = get_embeddings_model(settings)
@@ -150,7 +150,7 @@ def _embed_texts(texts: list[str], settings: Settings, batch_size: int = 128) ->
     return vectors
 
 
-def ingest_resources(settings: Settings) -> IngestStats:
+def ingest_resources(settings: Settings, force: bool = False) -> IngestStats:
     resource_path = settings.resources_dir
     files = resource_files(resource_path)
     records = [_resource_record(file_path, resource_path) for file_path in files]
@@ -174,7 +174,7 @@ def ingest_resources(settings: Settings) -> IngestStats:
 
         for record in records:
             current = existing_resources.get(record.source_path)
-            if current is not None and current.content_hash == record.content_hash:
+            if not force and current is not None and current.content_hash == record.content_hash:
                 continue
 
             now = utc_now()

@@ -95,7 +95,7 @@ def query_vector_chunks(query: str, settings: Settings) -> list[Document]:
     if settings.embedding_dimensions != EMBEDDING_DIMENSIONS:
         raise RuntimeError(
             "EMBEDDING_DIMENSIONS does not match the current database schema. "
-            "Expected 1024 for voyage-3-large."
+            f"Expected {EMBEDDING_DIMENSIONS}."
         )
 
     query_embedding = get_embeddings_model(settings).embed_query(query)
