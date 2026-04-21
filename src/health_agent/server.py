@@ -91,8 +91,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(lifespan=lifespan, title="health-agent")
 
 
+def _ensure_user_row(user_id: str) -> None:
+    session_factory = get_session_factory(get_settings())
+    with session_factory() as session:
+        stmt = (
+            pg_insert(User)
+            .values(clerk_user_id=user_id)
+            .on_conflict_do_nothing(index_elements=[User.clerk_user_id])
+        )
+        session.execute(stmt)
+        session.commit()
+
+
 def clerk_user(request: Request) -> str:
-    return require_clerk_user(request)
+    user_id = require_clerk_user(request)
+    _ensure_user_row(user_id)
+    return user_id
 
 
 @app.get("/info")
