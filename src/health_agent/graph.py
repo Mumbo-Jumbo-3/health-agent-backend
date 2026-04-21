@@ -150,7 +150,7 @@ def _format_rag_context(docs: list[Document]) -> str:
     return "\n---\n".join(doc.page_content for doc in docs)
 
 
-def build_graph(settings: Settings):
+def build_graph(settings: Settings, checkpointer=None):
     trusted_grok = get_trusted_grok_model(settings)
     unrestricted_grok = get_unrestricted_grok_model(settings)
     claude = get_claude_synthesis_model(settings)
@@ -457,4 +457,4 @@ Do not include any text outside the JSON object."""
     graph.add_edge("unrestricted_grok_search", "claude_synthesize")
     graph.add_edge("claude_synthesize", END)
 
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)

@@ -87,6 +87,25 @@ class User(Base):
     )
 
 
+class Thread(Base):
+    __tablename__ = "threads"
+    __table_args__ = (Index("ix_threads_user_id_updated_at", "user_id", "updated_at"),)
+
+    thread_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("users.clerk_user_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+
 class SharedConversation(Base):
     __tablename__ = "shared_conversations"
     __table_args__ = (

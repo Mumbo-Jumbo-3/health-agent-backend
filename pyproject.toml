@@ -11,8 +11,6 @@ dependencies = [
     "langchain-text-splitters>=1.1",
     "pydantic-settings>=2.13",
     "typer>=0.24",
-    "langgraph-cli[inmem]==0.4.21",
-    "langgraph-api==0.7.99",
     "langsmith==0.7.30",
     "langchain-community>=0.4.1",
     "sqlalchemy>=2.0.41",
@@ -23,6 +21,10 @@ dependencies = [
     "voyageai>=0.3.7",
     "clerk-backend-api>=5.0.6",
     "svix>=1.91.1",
+    "fastapi>=0.136.0",
+    "uvicorn[standard]>=0.45.0",
+    "sse-starlette>=3.3.4",
+    "langgraph-checkpoint-postgres>=3.0.5",
 ]
 
 [project.scripts]
