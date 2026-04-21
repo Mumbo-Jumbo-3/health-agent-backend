@@ -21,6 +21,8 @@ dependencies = [
     "pgvector>=0.4.1",
     "langchain-voyageai>=0.3.3",
     "voyageai>=0.3.7",
+    "clerk-backend-api>=5.0.6",
+    "svix>=1.91.1",
 ]
 
 [project.scripts]

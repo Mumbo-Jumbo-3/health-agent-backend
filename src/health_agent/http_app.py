@@ -3,31 +3,33 @@
 Registered in langgraph.json under the "http" key.
 """
 
-import os
 import uuid
 
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from starlette.applications import Starlette
+from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from health_agent.auth import require_clerk_user, require_webhook_secret
 from health_agent.config import get_settings
 from health_agent.db.core import get_session_factory
-from health_agent.db.models import SharedConversation
+from health_agent.db.models import SharedConversation, User
 
 
 def _truncate(text: str, limit: int) -> str:
     text = (text or "").strip()
     if len(text) <= limit:
         return text
-    return text[: limit - 1].rstrip() + "\u2026"
+    return text[: limit - 1].rstrip() + "…"
 
 
 async def create_share(request: Request) -> JSONResponse:
-    expected_key = os.environ.get("LANGSMITH_API_KEY", "")
-    provided_key = request.headers.get("x-api-key", "")
-    if not expected_key or provided_key != expected_key:
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    try:
+        user_id = require_clerk_user(request)
+    except HTTPException as exc:
+        return JSONResponse({"error": exc.detail}, status_code=exc.status_code)
 
     try:
         body = await request.json()
@@ -45,6 +47,7 @@ async def create_share(request: Request) -> JSONResponse:
     with session_factory() as session:
         row = SharedConversation(
             thread_id=thread_id,
+            user_id=user_id,
             title=title,
             first_message=first_message,
         )
@@ -78,9 +81,68 @@ async def get_share(request: Request) -> JSONResponse:
     return JSONResponse(payload)
 
 
+def _primary_email(email_addresses: list) -> str | None:
+    if not isinstance(email_addresses, list) or not email_addresses:
+        return None
+    first = email_addresses[0]
+    if isinstance(first, dict):
+        return first.get("email_address")
+    return None
+
+
+async def sync_user(request: Request) -> JSONResponse:
+    try:
+        require_webhook_secret(request)
+    except HTTPException as exc:
+        return JSONResponse({"error": exc.detail}, status_code=exc.status_code)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid json"}, status_code=400)
+
+    event_type = body.get("type", "")
+    data = body.get("data") or {}
+    clerk_user_id = data.get("id")
+    if not isinstance(clerk_user_id, str) or not clerk_user_id:
+        return JSONResponse({"error": "user id required"}, status_code=400)
+
+    session_factory = get_session_factory(get_settings())
+    with session_factory() as session:
+        if event_type == "user.deleted":
+            session.query(User).filter(User.clerk_user_id == clerk_user_id).delete()
+            session.commit()
+            return JSONResponse({"status": "deleted"})
+
+        if event_type in ("user.created", "user.updated"):
+            email = _primary_email(data.get("email_addresses") or [])
+            first_name = data.get("first_name")
+            last_name = data.get("last_name")
+            stmt = pg_insert(User).values(
+                clerk_user_id=clerk_user_id,
+                email=email,
+                first_name=first_name,
+                last_name=last_name,
+            )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=[User.clerk_user_id],
+                set_={
+                    "email": stmt.excluded.email,
+                    "first_name": stmt.excluded.first_name,
+                    "last_name": stmt.excluded.last_name,
+                },
+            )
+            session.execute(stmt)
+            session.commit()
+            return JSONResponse({"status": "upserted"})
+
+    return JSONResponse({"status": "ignored"})
+
+
 app = Starlette(
     routes=[
         Route("/share", create_share, methods=["POST"]),
         Route("/share/{share_id}", get_share, methods=["GET"]),
+        Route("/internal/users/sync", sync_user, methods=["POST"]),
     ]
 )

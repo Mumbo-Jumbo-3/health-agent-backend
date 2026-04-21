@@ -72,12 +72,35 @@ class AgentResourceChunk(Base):
     resource: Mapped[AgentResource] = relationship(back_populates="chunks")
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    clerk_user_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    email: Mapped[str | None] = mapped_column(Text, nullable=True)
+    first_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+
 class SharedConversation(Base):
     __tablename__ = "shared_conversations"
-    __table_args__ = (Index("ix_shared_conversations_thread_id", "thread_id"),)
+    __table_args__ = (
+        Index("ix_shared_conversations_thread_id", "thread_id"),
+        Index("ix_shared_conversations_user_id", "user_id"),
+    )
 
     share_id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     thread_id: Mapped[str] = mapped_column(Text, nullable=False)
+    user_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("users.clerk_user_id", ondelete="CASCADE"),
+        nullable=False,
+    )
     title: Mapped[str] = mapped_column(Text, nullable=False, default="")
     first_message: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(
