@@ -523,6 +523,7 @@ Do not include any text outside the JSON object."""
             )
             response = AIMessage(content=SYNTHESIS_FALLBACK_TEXT)
 
+        _emit_phase("synthesize", "completed", {"status": STATUS_SUCCESS})
         return {"messages": [response]}
 
     graph = StateGraph(AgentState)
