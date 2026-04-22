@@ -293,7 +293,7 @@ async def _stream_events(
         async for mode, chunk in graph.astream(
             input_payload,
             config=config,
-            stream_mode=["messages", "updates"],
+            stream_mode=["messages", "updates", "custom"],
         ):
             if mode == "messages":
                 message_chunk, metadata = chunk
@@ -329,6 +329,21 @@ async def _stream_events(
                         {
                             "nodes": list(chunk.keys()) if isinstance(chunk, dict) else [],
                         }
+                    ),
+                }
+            elif mode == "custom":
+                if not isinstance(chunk, dict) or chunk.get("kind") != "phase":
+                    continue
+                phase = chunk.get("phase")
+                status = chunk.get("status")
+                meta = chunk.get("meta") or {}
+                logger.debug(
+                    "phase event: phase=%s status=%s meta=%s", phase, status, meta
+                )
+                yield {
+                    "event": "phase",
+                    "data": json.dumps(
+                        {"phase": phase, "status": status, "meta": meta}
                     ),
                 }
     except asyncio.CancelledError:

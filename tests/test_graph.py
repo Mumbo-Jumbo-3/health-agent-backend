@@ -9,6 +9,7 @@ from health_agent.graph import (
     STATUS_EMPTY,
     STATUS_ERROR,
     STATUS_SUCCESS,
+    SYNTHESIS_FALLBACK_TEXT,
     build_graph,
 )
 
@@ -298,6 +299,63 @@ def test_claude_synthesize_includes_question_and_statuses():
     assert "Unrestricted X Search: empty" in content
     assert "## Trusted X Analysis" in content
     assert "## Retrieved Documents" in content
+
+
+def test_claude_synthesize_falls_back_on_empty_string(caplog):
+    claude_model = MagicMock()
+    claude_model.invoke = lambda messages, **kwargs: AIMessage(content="")
+    fn = _get_node_func("claude_synthesize", claude=claude_model)
+
+    with caplog.at_level("WARNING", logger="health_agent.graph"):
+        result = fn(
+            {
+                "messages": [HumanMessage(content="How do I sleep better?")],
+                "trusted_search_response": "trusted",
+                "trusted_refined_queries": [],
+                "trusted_search_status": STATUS_SUCCESS,
+                "unrestricted_search_response": "",
+                "unrestricted_search_status": "skipped",
+                "base_rag_docs": [],
+                "base_rag_status": STATUS_SUCCESS,
+                "enrich_rag_docs": [],
+                "enrich_rag_status": STATUS_EMPTY,
+                "merged_rag_docs": [],
+                "rag_status": STATUS_SUCCESS,
+                "rag_context": "rag",
+            }
+        )
+
+    assert result["messages"][-1].content == SYNTHESIS_FALLBACK_TEXT
+    assert any("empty content" in rec.message for rec in caplog.records)
+
+
+def test_claude_synthesize_falls_back_on_tool_only_blocks(caplog):
+    claude_model = MagicMock()
+    claude_model.invoke = lambda messages, **kwargs: AIMessage(
+        content=[{"type": "tool_use", "id": "t1", "name": "x", "input": {}}]
+    )
+    fn = _get_node_func("claude_synthesize", claude=claude_model)
+
+    with caplog.at_level("WARNING", logger="health_agent.graph"):
+        result = fn(
+            {
+                "messages": [HumanMessage(content="Why do I feel tired?")],
+                "trusted_search_response": "trusted",
+                "trusted_refined_queries": [],
+                "trusted_search_status": STATUS_SUCCESS,
+                "unrestricted_search_response": "",
+                "unrestricted_search_status": "skipped",
+                "base_rag_docs": [],
+                "base_rag_status": STATUS_SUCCESS,
+                "enrich_rag_docs": [],
+                "enrich_rag_status": STATUS_EMPTY,
+                "merged_rag_docs": [],
+                "rag_status": STATUS_SUCCESS,
+                "rag_context": "rag",
+            }
+        )
+
+    assert result["messages"][-1].content == SYNTHESIS_FALLBACK_TEXT
 
 
 def test_graph_invokes_claude_even_if_trusted_search_fails():

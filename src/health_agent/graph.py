@@ -5,6 +5,7 @@ from hashlib import sha256
 
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel
 
@@ -27,6 +28,30 @@ STATUS_ERROR = "error"
 STATUS_SKIPPED = "skipped"
 
 NO_RAG_RESULTS = "No relevant documents found."
+
+SYNTHESIS_FALLBACK_TEXT = (
+    "I wasn't able to assemble a complete answer from the evidence I gathered. "
+    "Try rephrasing your question or adding specifics."
+)
+
+
+def _emit_phase(phase: str, status: str, meta: dict | None = None) -> None:
+    """Emit a phase lifecycle event to the LangGraph custom stream writer.
+
+    Consumed by server._stream_events and forwarded as SSE `event: phase` to the
+    frontend's stage timeline. Silently no-ops outside a streaming context
+    (e.g. in unit tests), so node functions can call this unconditionally.
+    """
+    try:
+        writer = get_stream_writer()
+    except Exception:
+        return
+    if writer is None:
+        return
+    try:
+        writer({"kind": "phase", "phase": phase, "status": status, "meta": meta or {}})
+    except Exception:
+        logger.debug("stream writer dropped phase event", exc_info=True)
 
 
 def _content_id(doc: Document) -> str:
@@ -207,6 +232,7 @@ Return ONLY a JSON object with:
 Do not include any text outside the JSON object."""
 
     def trusted_grok_search(state: AgentState):
+        _emit_phase("trusted_search", "started")
         last_message = state["messages"][-1]
         search_llm = trusted_grok.with_config({"tags": ["nostream"]}).bind(
             tools=[
@@ -234,13 +260,20 @@ Do not include any text outside the JSON object."""
             result = TrustedSearchAnalysis(**parsed)
             cleaned_response = _strip_grok_render_tags(result.initial_response).strip()
             refined_queries = _normalize_queries(result.refined_queries, str(last_message.content))
+            status = _search_status(cleaned_response)
+            _emit_phase(
+                "trusted_search",
+                "completed",
+                {"status": status, "refined_queries": len(refined_queries)},
+            )
             return {
                 "trusted_search_response": cleaned_response,
                 "trusted_refined_queries": refined_queries,
-                "trusted_search_status": _search_status(cleaned_response),
+                "trusted_search_status": status,
             }
         except Exception:
             logger.exception("Trusted Grok search failed")
+            _emit_phase("trusted_search", "completed", {"status": STATUS_ERROR})
             return {
                 "trusted_search_response": "Trusted-account X search failed.",
                 "trusted_refined_queries": [str(last_message.content)],
@@ -248,6 +281,7 @@ Do not include any text outside the JSON object."""
             }
 
     def unrestricted_grok_search(state: AgentState):
+        _emit_phase("unrestricted_search", "started")
         last_message = state["messages"][-1]
         search_llm = unrestricted_grok.with_config({"tags": ["nostream"]}).bind(
             tools=[{"type": "x_search"}]
@@ -266,33 +300,41 @@ Do not include any text outside the JSON object."""
 
             result = UnrestrictedSearchAnalysis(**parsed)
             cleaned_response = _strip_grok_render_tags(result.initial_response).strip()
+            status = _search_status(cleaned_response)
+            _emit_phase("unrestricted_search", "completed", {"status": status})
             return {
                 "unrestricted_search_response": cleaned_response,
-                "unrestricted_search_status": _search_status(cleaned_response),
+                "unrestricted_search_status": status,
             }
         except Exception:
             logger.exception("Unrestricted Grok search failed")
+            _emit_phase("unrestricted_search", "completed", {"status": STATUS_ERROR})
             return {
                 "unrestricted_search_response": "Unrestricted X search failed.",
                 "unrestricted_search_status": STATUS_ERROR,
             }
 
     def rag_retrieve_base(state: AgentState):
+        _emit_phase("rag_base", "started")
         original_query = str(state["messages"][-1].content)
         try:
             docs = _run_search_retrieval([original_query], settings)
+            status = _docs_status(docs)
+            _emit_phase("rag_base", "completed", {"status": status, "docs": len(docs)})
             return {
                 "base_rag_docs": docs,
-                "base_rag_status": _docs_status(docs),
+                "base_rag_status": status,
             }
         except Exception:
             logger.exception("Base RAG retrieval failed")
+            _emit_phase("rag_base", "completed", {"status": STATUS_ERROR, "docs": 0})
             return {
                 "base_rag_docs": [],
                 "base_rag_status": STATUS_ERROR,
             }
 
     def rag_retrieve_enrich(state: AgentState):
+        _emit_phase("rag_enrich", "started")
         original_query = str(state["messages"][-1].content)
         candidate_queries = [
             query
@@ -301,6 +343,9 @@ Do not include any text outside the JSON object."""
         ]
 
         if not candidate_queries:
+            _emit_phase(
+                "rag_enrich", "completed", {"status": STATUS_SKIPPED, "docs": 0}
+            )
             return {
                 "enrich_rag_docs": [],
                 "enrich_rag_status": STATUS_EMPTY,
@@ -308,18 +353,26 @@ Do not include any text outside the JSON object."""
 
         try:
             docs = _run_search_retrieval(candidate_queries, settings)
+            status = _docs_status(docs)
+            _emit_phase(
+                "rag_enrich",
+                "completed",
+                {"status": status, "docs": len(docs), "queries": len(candidate_queries)},
+            )
             return {
                 "enrich_rag_docs": docs,
-                "enrich_rag_status": _docs_status(docs),
+                "enrich_rag_status": status,
             }
         except Exception:
             logger.exception("Enriched RAG retrieval failed")
+            _emit_phase("rag_enrich", "completed", {"status": STATUS_ERROR, "docs": 0})
             return {
                 "enrich_rag_docs": [],
                 "enrich_rag_status": STATUS_ERROR,
             }
 
     def rag_merge(state: AgentState):
+        _emit_phase("rag_merge", "started")
         original_query = str(state["messages"][-1].content)
         try:
             merged_docs = reciprocal_rank_fusion(
@@ -334,6 +387,11 @@ Do not include any text outside the JSON object."""
             ):
                 rag_status = STATUS_ERROR
 
+            _emit_phase(
+                "rag_merge",
+                "completed",
+                {"status": rag_status, "docs": len(reranked_docs)},
+            )
             return {
                 "merged_rag_docs": reranked_docs,
                 "rag_status": rag_status,
@@ -341,6 +399,7 @@ Do not include any text outside the JSON object."""
             }
         except Exception:
             logger.exception("RAG merge failed")
+            _emit_phase("rag_merge", "completed", {"status": STATUS_ERROR, "docs": 0})
             return {
                 "merged_rag_docs": [],
                 "rag_status": STATUS_ERROR,
@@ -348,12 +407,16 @@ Do not include any text outside the JSON object."""
             }
 
     def sufficiency_gate(state: AgentState):
+        _emit_phase("gate", "started")
         rag_errored = (
             state["base_rag_status"] == STATUS_ERROR
             and state["enrich_rag_status"] == STATUS_ERROR
         )
         if state["trusted_search_status"] == STATUS_ERROR or rag_errored:
             logger.info("Sufficiency gate: upstream ERROR, routing to unrestricted Grok")
+            _emit_phase(
+                "gate", "completed", {"sufficient": False, "reason": "upstream_error"}
+            )
             return {"sufficient": False}
 
         user_question = str(state["messages"][-1].content)
@@ -377,6 +440,8 @@ Do not include any text outside the JSON object."""
             logger.exception("Sufficiency judge failed; defaulting to insufficient")
             sufficient = False
 
+        _emit_phase("gate", "completed", {"sufficient": sufficient})
+
         if sufficient:
             return {
                 "sufficient": True,
@@ -389,6 +454,7 @@ Do not include any text outside the JSON object."""
         return "unrestricted_grok_search" if not state["sufficient"] else "claude_synthesize"
 
     def claude_synthesize(state: AgentState):
+        _emit_phase("synthesize", "started")
         original_question = str(state["messages"][-1].content)
         unrestricted_status = state["unrestricted_search_status"]
         skipped = unrestricted_status == STATUS_SKIPPED
@@ -426,7 +492,37 @@ Do not include any text outside the JSON object."""
             HumanMessage(content=user_content),
         ]
 
+        logger.info(
+            "claude_synthesize invoke: trusted=%s base_rag=%s enrich_rag=%s rag=%s unrestricted=%s user_chars=%d",
+            state["trusted_search_status"],
+            state["base_rag_status"],
+            state["enrich_rag_status"],
+            state["rag_status"],
+            unrestricted_status,
+            len(user_content),
+        )
+
         response = claude.invoke(messages)
+        extracted = _extract_raw_content(response)
+        content_blocks = (
+            len(response.content) if isinstance(response.content, list) else None
+        )
+        logger.info(
+            "claude_synthesize response: type=%s content_type=%s blocks=%s extracted_chars=%d raw_preview=%s",
+            type(response).__name__,
+            type(response.content).__name__,
+            content_blocks,
+            len(extracted),
+            repr(response.content)[:500],
+        )
+
+        if not extracted.strip():
+            logger.warning(
+                "claude_synthesize returned empty content; emitting fallback. raw=%s",
+                repr(response.content)[:2000],
+            )
+            response = AIMessage(content=SYNTHESIS_FALLBACK_TEXT)
+
         return {"messages": [response]}
 
     graph = StateGraph(AgentState)
