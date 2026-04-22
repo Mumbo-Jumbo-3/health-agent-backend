@@ -15,7 +15,6 @@ from typing import Any, AsyncIterator
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from langchain_core.load import dumpd
 from langchain_core.messages import BaseMessage
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg_pool import AsyncConnectionPool
@@ -57,7 +56,19 @@ def _serialize_messages(messages: list[Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for msg in messages:
         if isinstance(msg, BaseMessage):
-            out.append(dumpd(msg))
+            base: dict[str, Any] = {
+                "id": msg.id,
+                "type": msg.type,
+                "content": msg.content,
+            }
+            if msg.type == "ai":
+                tool_calls = getattr(msg, "tool_calls", None)
+                if tool_calls:
+                    base["tool_calls"] = tool_calls
+            elif msg.type == "tool":
+                base["tool_call_id"] = getattr(msg, "tool_call_id", None)
+                base["name"] = getattr(msg, "name", None)
+            out.append(base)
         elif isinstance(msg, dict):
             out.append(msg)
     return out
