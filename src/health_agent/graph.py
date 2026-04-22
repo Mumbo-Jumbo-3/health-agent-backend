@@ -188,7 +188,10 @@ accounts: {accounts}.
 
 Return ONLY a JSON object with:
 - "initial_response": a practical analysis grounded in relevant posts from those accounts
-- "refined_queries": 3-4 keyword-rich semantic search queries for a wellness RAG library
+- "refined_queries": 3-4 short natural-language queries (each <=10 words) for a
+  wellness RAG library. Each query must focus on ONE distinct angle of the
+  user's question (avoid stacking unrelated keywords in a single query) and the
+  set should cover different facets rather than paraphrasing each other.
 
 Do not include any text outside the JSON object."""
 
