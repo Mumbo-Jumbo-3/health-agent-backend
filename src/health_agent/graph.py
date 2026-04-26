@@ -205,7 +205,7 @@ Do not include any text outside the JSON object."""
 
     synthesis_system = """You are a knowledgeable health and wellness assistant.
 You will receive evidence from up to three channels:
-1. A RAG system trained on the entirety of Dr. Ray Peat's work
+1. A RAG system over a curated research archive
 2. Trusted X accounts
 3. Unrestricted X Search (may be absent)
 
@@ -214,7 +214,7 @@ If evidence conflicts, prefer the higher-priority source and briefly explain the
 If a channel is empty or failed, briefly note that its evidence was limited or unavailable.
 If unrestricted X search was not consulted, do not mention it at all.
 Keep the response integrated rather than source-separated, but include a brief hierarchy note
-that the Ray Peat RAG corpus and trusted accounts were weighted above broader X findings.
+that the curated research archive and trusted accounts were weighted above broader X findings.
 
 Disclaimers are provided elsewhere. Do not mention filenames or internal implementation details."""
 
@@ -223,7 +223,7 @@ the user's health question.
 
 Given:
 - The user's question
-- Retrieved RAG documents from Dr. Ray Peat's corpus
+- Retrieved RAG documents from the curated research archive
 - Analysis from trusted X accounts
 
 Return ONLY a JSON object with:
@@ -465,7 +465,7 @@ Do not include any text outside the JSON object."""
         sections = [
             f"## User Question\n{original_question}",
             "## Evidence Priority\n"
-            "1. RAG system trained on the entirety of Dr. Ray Peat's work\n"
+            "1. RAG system over a curated research archive\n"
             "2. Trusted X accounts"
             + ("" if skipped else "\n3. Unrestricted X Search"),
         ]
